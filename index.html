@@ -1752,56 +1752,11 @@ const taigiTextMap = Object.fromEntries(
         }
 
         // 初始化 MediaPipe Face Mesh（僅保留頭控所需的鼻尖處理）
-        function initAIModel() {
-            faceMesh = new FaceMesh({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-            });
-
-            faceMesh.setOptions({
-                maxNumFaces: 1,
-                refineLandmarks: false, // 只有頭控不用開瞳孔特徵，提高運行流暢度
-                minDetectionConfidence: 0.6,
-                minTrackingConfidence: 0.6
-            });
-
-            const cursorElement = document.getElementById('head-cursor');
-            const loadingElement = document.getElementById('loading-status');
-
-            faceMesh.onResults((results) => {
-                if (currentMode !== 'head') return; // 如果不是頭控，不執行此處代碼
-
-                if (loadingElement.style.display !== 'none') {
-                    loadingElement.style.display = 'none';
-                    cursorElement.style.display = 'block';
-                }
-
-                if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-                    const landmarks = results.multiFaceLandmarks[0];
-                    const nose = landmarks[4];
-                    
-                    const targetX = window.innerWidth / 2 + ((1 - nose.x) - 0.5) * window.innerWidth * SENSITIVITY_X;
-                    const targetY = window.innerHeight / 2 + (nose.y - 0.5) * window.innerHeight * SENSITIVITY_Y;
-                    
-                    const finalX = Math.max(0, Math.min(window.innerWidth, targetX));
-                    const finalY = Math.max(0, Math.min(window.innerHeight, targetY));
-
-                    cursorElement.style.left = `${finalX}px`;
-                    cursorElement.style.top = `${finalY}px`;
-
-                    checkHover(finalX, finalY);
-                } else {
-                    resetGaze();
-                }
-            });
-        }
-
-        // 新增：WebGazer 眼控專用初始化與監聽回呼
-        // 升級版：WebGazer 眼控專用初始化與監聽回呼
+        // 🛠️ 終極強化版：WebGazer 眼控專用初始化
         function initWebGazer() {
-            // 防呆：確保 WebGazer 腳本已成功載入到全域中
             if (typeof window.webgazer === 'undefined') {
-                console.error("WebGazer 腳本尚未載入完成，請檢查網路或 CDN 連結是否正確。");
-                alert("眼控模組載入失敗，請重新整理網頁再試一次。");
+                console.error("WebGazer 腳本尚未載入。");
+                document.getElementById('loading-status').innerText = "錯誤：找不到 WebGazer 腳本，請確認 CDN 是否載入成功。";
                 return false;
             }
 
@@ -1811,15 +1766,17 @@ const taigiTextMap = Object.fromEntries(
                 const cursorElement = document.getElementById('head-cursor');
                 const loadingElement = document.getElementById('loading-status');
 
+                // 設定眼控監聽器
                 webgazer.setGazeListener((data, clock) => {
                     if (currentMode !== 'eye' || data == null) return;
 
+                    // 只要一拿到資料，代表載入成功，隱藏載入狀態
                     if (loadingElement.style.display !== 'none') {
                         loadingElement.style.display = 'none';
                         cursorElement.style.display = 'block';
                     }
 
-                    // 直接獲取 WebGazer 的迴歸預測螢幕座標
+                    // 限制游標在螢幕範圍內
                     const finalX = Math.max(0, Math.min(window.innerWidth, data.x));
                     const finalY = Math.max(0, Math.min(window.innerHeight, data.y));
 
@@ -1829,37 +1786,35 @@ const taigiTextMap = Object.fromEntries(
                     checkHover(finalX, finalY);
                 });
 
-                // 關閉 WebGazer 預設內建的紅點游標，使用我們自己的專屬圓圈游標
+                // 關閉 WebGazer 預設的紅點，使用我們自己的
                 webgazer.showVideoPreview(true)
                          .showPredictionPoints(false);
 
                 isWebGazerInitialized = true;
                 return true;
             } catch (err) {
-                console.error("WebGazer 初始化發生錯誤:", err);
+                console.error("WebGazer 初始化失敗:", err);
+                document.getElementById('loading-status').innerText = `WebGazer 初始化失敗: ${err.message}`;
                 return false;
             }
         }
 
-        // 升級版：啟動鏡頭與偵測（兼容 MediaPipe 與 WebGazer）
+        // 🛠️ 終極強化版：啟動鏡頭與偵測
         function startCameraAndAI() {
             const videoElement = document.getElementById('webcam-preview');
             const loadingElement = document.getElementById('loading-status');
             const cursorElement = document.getElementById('head-cursor');
 
             loadingElement.style.display = 'block';
-            loadingElement.innerText = `AI ${currentMode === 'head' ? '頭控' : '眼控'}模式載入中...`;
+            loadingElement.innerText = `AI ${currentMode === 'head' ? '頭控' : '眼控'}模式載入中，請允許鏡頭權限...`;
+            cursorElement.style.display = 'none';
 
+            // 1. 如果是頭控模式 (MediaPipe)
             if (currentMode === 'head') {
-                // 如果先前有開啟 WebGazer，先將其暫停
+                // 先完全關閉關閉 WebGazer
                 if (isWebGazerInitialized && typeof webgazer !== 'undefined') {
-                    webgazer.pause();
-                    const wgVideo = document.getElementById('webgazerVideoFeed');
-                    if (wgVideo) wgVideo.style.display = 'none';
-                    const wgCanvas = document.getElementById('webgazerFaceOverlay');
-                    if (wgCanvas) wgCanvas.style.display = 'none';
-                    const wgFeedback = document.getElementById('webgazerFaceFeedbackBox');
-                    if (wgFeedback) wgFeedback.style.display = 'none';
+                    try { webgazer.pause(); } catch(e){}
+                    hideWebGazerUI();
                 }
 
                 videoElement.style.display = 'block'; 
@@ -1876,49 +1831,57 @@ const taigiTextMap = Object.fromEntries(
                         height: 480
                     });
                 }
+                
                 camera.start()
                     .then(() => { isCameraRunning = true; })
-                    .catch(err => { showError(); });
+                    .catch(err => { 
+                        console.error("MediaPipe 鏡頭啟動失敗:", err);
+                        showError(); 
+                    });
 
+            // 2. 如果是眼控模式 (WebGazer)
             } else if (currentMode === 'eye') {
-                // 關閉 MediaPipe 鏡頭，交由 WebGazer 接管
+                // 先完全釋放 MediaPipe 的鏡頭，避免衝突卡死
                 if (isCameraRunning && camera) {
-                    camera.stop();
+                    try { camera.stop(); } catch(e){}
                     isCameraRunning = false;
-                    videoElement.style.display = 'none';
                 }
+                videoElement.style.display = 'none';
 
-                // 執行初始化，若失敗則中斷
-                if (!initWebGazer()) {
-                    loadingElement.style.display = 'none';
-                    return;
-                }
+                // 初始化 WebGazer
+                if (!initWebGazer()) return;
 
-                // 啟動 WebGazer 偵測
-                try {
-                    webgazer.resume();
-                    
-                    // 將 WebGazer 自帶的預覽小視窗移至合適位置
-                    setTimeout(() => {
-                        const wgVideo = document.getElementById('webgazerVideoFeed');
-                        if (wgVideo) {
-                            wgVideo.style.display = 'block';
-                            wgVideo.style.position = 'fixed';
-                            wgVideo.style.bottom = '10px';
-                            wgVideo.style.right = '10px';
-                            wgVideo.style.width = '160px';
-                            wgVideo.style.height = '120px';
-                            wgVideo.style.zIndex = '999';
-                            wgVideo.style.transform = 'scaleX(-1)'; // 鏡像翻轉
-                        }
-                    }, 1000);
-                } catch (e) {
-                    console.error("WebGazer 啟動失敗:", e);
-                    showError();
-                }
+                // 啟動 WebGazer
+                webgazer.resume()
+                    .then(() => {
+                        // 成功啟動後，調整 WebGazer 預設小視窗的位置與大小
+                        setTimeout(() => {
+                            const wgVideo = document.getElementById('webgazerVideoFeed');
+                            if (wgVideo) {
+                                wgVideo.style.display = 'block';
+                                wgVideo.style.position = 'fixed';
+                                wgVideo.style.bottom = '10px';
+                                wgVideo.style.right = '10px';
+                                wgVideo.style.width = '160px';
+                                wgVideo.style.height = '120px';
+                                wgVideo.style.zIndex = '9999';
+                                wgVideo.style.transform = 'scaleX(-1)'; // 鏡像
+                            }
+                            // 隱藏不必要的 canvas 疊加層
+                            const wgCanvas = document.getElementById('webgazerFaceOverlay');
+                            if (wgCanvas) wgCanvas.style.display = 'none';
+                            const wgFeedback = document.getElementById('webgazerFaceFeedbackBox');
+                            if (wgFeedback) wgFeedback.style.display = 'none';
+                        }, 1200);
+                    })
+                    .catch(err => {
+                        console.error("WebGazer 核心啟動失敗:", err);
+                        loadingElement.innerText = `眼控鏡頭啟動失敗，請確認是否有其他應用程式佔用了鏡頭。錯誤: ${err.message}`;
+                    });
             }
         }
-        // 停止鏡頭與偵測（回到觸控模式）
+
+        // 🛠️ 終極強化版：停止鏡頭與偵測
         function stopCameraAndAI() {
             const videoElement = document.getElementById('webcam-preview');
             const cursorElement = document.getElementById('head-cursor');
@@ -1929,27 +1892,26 @@ const taigiTextMap = Object.fromEntries(
             loadingElement.style.display = 'none';
 
             // 關閉 MediaPipe
-            if (videoElement.srcObject) {
-                videoElement.srcObject.getTracks().forEach(track => track.stop());
-                videoElement.srcObject = null;
+            if (isCameraRunning && camera) {
+                try { camera.stop(); } catch(e){}
+                isCameraRunning = false;
             }
-            if (camera) {
-                camera.stop();
-            }
-            isCameraRunning = false;
 
             // 關閉並隱藏 WebGazer
-            if (isWebGazerInitialized) {
-                webgazer.pause();
-                const wgVideo = document.getElementById('webgazerVideoFeed');
-                if (wgVideo) wgVideo.style.display = 'none';
-                const wgCanvas = document.getElementById('webgazerFaceOverlay');
-                if (wgCanvas) wgCanvas.style.display = 'none';
-                const wgFeedback = document.getElementById('webgazerFaceFeedbackBox');
-                if (wgFeedback) wgFeedback.style.display = 'none';
+            if (isWebGazerInitialized && typeof webgazer !== 'undefined') {
+                try { webgazer.pause(); } catch(e){}
+                hideWebGazerUI();
             }
         }
 
+        // 輔助函式：強制隱藏 WebGazer 自動產生的所有 UI 元素
+        function hideWebGazerUI() {
+            const ids = ['webgazerVideoFeed', 'webgazerFaceOverlay', 'webgazerFaceFeedbackBox'];
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+        }
         function checkHover(x, y) {
             const gridContainer = document.getElementById('grid-container');
             const leftBoundary = window.innerWidth * 0.10;
