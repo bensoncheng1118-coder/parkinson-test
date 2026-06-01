@@ -1801,6 +1801,18 @@ const taigiTextMap = Object.fromEntries(
 
         // 🛠️ 終極強化版：啟動鏡頭與偵測
         function startCameraAndAI() {
+// 在 currentMode === 'eye' 的區塊內最上方加上這段：
+if (currentMode === 'eye') {
+    // 【新增這段】強制清除上一次可能卡殘留的 WebGazer 元素，避免死鎖
+    const oldVideo = document.getElementById('webgazerVideoFeed');
+    if (oldVideo) oldVideo.remove();
+    const oldCanvas = document.getElementById('webgazerFaceOverlay');
+    if (oldCanvas) oldCanvas.remove();
+    
+    // 底下接原本的邏輯...
+    if (!initWebGazer()) return;
+    // ...
+}
             const videoElement = document.getElementById('webcam-preview');
             const loadingElement = document.getElementById('loading-status');
             const cursorElement = document.getElementById('head-cursor');
@@ -1976,6 +1988,13 @@ const taigiTextMap = Object.fromEntries(
             });
         }
     </script>
+<div id="loading-status" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 8px; z-index: 999999; display: none; font-size: 18px; pointer-events: none;">
+    AI 模式載入中...
+</div>
+
+<div id="head-cursor" style="position: fixed; width: 30px; height: 30px; border: 4px solid #ef4444; background-color: rgba(239, 68, 68, 0.2); border-radius: 50%; pointer-events: none; z-index: 999999; display: none; transform: translate(-50%, -50%); transition: left 0.1s ease, top 0.1s ease;"></div>
+
+<video id="webcam-preview" autoplay playsinline style="display: none; width: 640px; height: 480px;"></video>
 </body>
 
 </html>
