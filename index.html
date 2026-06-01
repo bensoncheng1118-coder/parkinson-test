@@ -1,0 +1,2019 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>帕金森氏症專用 AAC 多功能控制系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@48,700,0,0" />
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+	<link rel="manifest" href="./manifest.json">
+	<meta name="theme-color" content="#16a34a">
+	<link rel="apple-touch-icon" href="./icon-192.png">
+    <style>
+        .phrase-btn,
+        .nav-btn,
+        .ctrl-btn {
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+        }
+/* 所有可點擊按鈕都先保留邊框空間，避免框框出現時版面跳動 */
+button,
+select,
+.phrase-btn,
+.nav-btn,
+.ctrl-btn,
+#vocab-selection-grid > div {
+    box-sizing: border-box;
+}
+
+/* 滑鼠 hover、鍵盤聚焦、頭控/眼控停留時，都顯示外框 */
+button:hover,
+select:hover,
+.phrase-btn:hover,
+.nav-btn:hover,
+.ctrl-btn:hover,
+#vocab-selection-grid > div:hover,
+button:focus-visible,
+select:focus-visible,
+.phrase-btn:focus-visible,
+.nav-btn:focus-visible,
+.ctrl-btn:focus-visible,
+.gaze-hover {
+    outline: 5px solid #facc15;
+    outline-offset: 4px;
+}
+
+/* 九宮格詞彙按鈕：滑鼠與頭控/眼控停留都更明顯 */
+.phrase-btn:hover,
+.phrase-btn.gaze-hover {
+    border-color: #22c55e;
+    box-shadow: 0 6px 0 #16a34a, 0 0 0 6px rgba(250, 204, 21, 0.45);
+}
+
+/* 下方類別按鈕：滑鼠與頭控/眼控停留 */
+.nav-btn:hover,
+.nav-btn.gaze-hover {
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.18), 0 0 0 6px rgba(250, 204, 21, 0.55);
+}
+
+/* 播放、清除按鈕：滑鼠與頭控/眼控停留 */
+.ctrl-btn:hover,
+.ctrl-btn.gaze-hover {
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.18), 0 0 0 6px rgba(250, 204, 21, 0.55);
+}
+
+/* 類別按鈕按下後保留框框 */
+.nav-btn.active-nav {
+    outline: 5px solid #facc15;
+    outline-offset: 4px;
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2), 0 0 0 7px rgba(250, 204, 21, 0.65);
+}
+        /* 調整中間按鈕：移除正方形限制，使其呈現大又寬的長方形並充滿網格 */
+        .phrase-btn {
+            width: 100%;
+            height: 100%;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 28px;
+            background-color: white;
+            box-shadow: 0 6px 0 #cbd5e1;
+            border: 3px solid #e2e8f0;
+            transition: all 0.05s;
+            gap: 12px;
+        }
+
+        .gaze-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0%;
+            height: 100%;
+            background-color: rgba(34, 197, 94, 0.2);
+            transition: width 0.1s linear;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .btn-content {
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .icon-main {
+            font-size: 3.5rem !important;
+            color: #22c55e;
+        }
+	.arasaac-icon {
+            width: 76px;
+            height: 76px;
+            object-fit: contain;
+            display: block;
+        }
+
+        .arasaac-icon-small {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            display: block;
+        }
+
+        .text-main {
+            font-size: 1.6rem;
+            font-weight: 900;
+            color: #1e293b;
+        }
+
+        /* 最下排導覽按鈕維持大尺寸 */
+        .nav-btn {
+            height: 130px;
+            font-size: 2.2rem;
+            font-weight: 900;
+            color: white;
+            border-radius: 24px;
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        #display-box {
+            min-height: 60px;
+            max-height: 60px;
+            font-size: 1.6rem;
+            background: white;
+            border: 3px solid #22c55e;
+            border-radius: 16px;
+            padding: 5px 15px;
+            font-weight: bold;
+            color: #15803d;
+            display: flex;
+            align-items: center;
+            overflow-x: auto;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        #head-cursor {
+            position: fixed;
+            width: 24px;
+            height: 24px;
+            background-color: rgba(34, 197, 94, 0.8);
+            border: 3px solid white;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+            display: none;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        /* 完全隱藏右下角的視訊畫面，不影響追蹤功能 */
+        #webcam-preview {
+            position: fixed;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        #loading-status {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 16px;
+            font-size: 1.5rem;
+            z-index: 10000;
+            display: none;
+        }
+
+        /* 新增：左側右拉選單動畫與遮罩樣式 */
+        #settings-sidebar {
+            transition: transform 0.3s ease-in-out;
+            z-index: 10050;
+        }
+        #sidebar-overlay {
+            transition: opacity 0.3s ease-in-out;
+            z-index: 10040;
+        }
+.category-arasaac-icon {
+    width: 58px;
+    height: 58px;
+    object-fit: contain;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.category-material-icon {
+    font-size: 3rem !important;
+    margin-bottom: 6px;
+}
+html,
+body {
+    width: 100%;
+    height: 100%;
+}
+
+/* 桌機維持原本大按鈕，不縮小 */
+body {
+    min-height: 100vh;
+    padding: 16px !important;
+    overflow: hidden;
+}
+
+#grid-container {
+    min-height: 0;
+}
+
+/* 只有平板與手機才開始自適應 */
+@media (max-width: 900px) {
+    body {
+        min-height: 100dvh;
+        padding: 10px !important;
+        overflow-y: auto;
+    }
+
+    body > .flex.gap-3.mb-2 {
+        gap: 8px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+    }
+
+    #btn-settings-toggle {
+        width: 64px !important;
+        height: 52px !important;
+    }
+
+    #btn-lang-toggle {
+        width: 112px !important;
+        height: 52px !important;
+    }
+
+    #btn-mode {
+        width: 112px !important;
+        height: 52px !important;
+        font-size: 0.85rem;
+    }
+
+    #btn-play,
+    #btn-clear {
+        width: 72px !important;
+        height: 52px !important;
+    }
+
+    #display-box {
+        order: 10;
+        flex-basis: 100%;
+        min-height: 52px;
+        max-height: 52px;
+        font-size: 1.25rem;
+    }
+
+    #grid-container {
+        gap: 10px !important;
+        margin-bottom: 10px !important;
+        min-height: 52vh;
+    }
+
+    .phrase-btn {
+        border-radius: 20px;
+        gap: 8px;
+    }
+
+    .icon-main {
+        font-size: 2.8rem !important;
+    }
+
+    .arasaac-icon {
+        width: 62px;
+        height: 62px;
+    }
+
+    .text-main {
+        font-size: 1.25rem;
+        line-height: 1.15;
+        text-align: center;
+    }
+
+    .nav-btn {
+        height: 96px;
+        font-size: 1.5rem;
+        border-radius: 18px;
+    }
+
+    .category-material-icon {
+        font-size: 2.2rem !important;
+        margin-bottom: 4px;
+    }
+
+    .category-arasaac-icon {
+        width: 42px;
+        height: 42px;
+        margin-bottom: 4px;
+    }
+
+    body > .grid.grid-cols-5 {
+        gap: 8px;
+    }
+}
+
+/* 很小的手機再縮一層 */
+@media (max-width: 480px) {
+    body {
+        padding: 6px !important;
+    }
+
+    body > .flex.gap-3.mb-2 {
+        gap: 6px;
+    }
+
+    #grid-container {
+        gap: 6px !important;
+        min-height: 50vh;
+    }
+
+    .phrase-btn {
+        border-radius: 14px;
+        border-width: 2px;
+        gap: 4px;
+        box-shadow: 0 4px 0 #cbd5e1;
+    }
+
+    .icon-main {
+        font-size: 2rem !important;
+    }
+
+    .arasaac-icon {
+        width: 42px;
+        height: 42px;
+    }
+
+    .text-main {
+        font-size: 0.95rem;
+    }
+
+    .nav-btn {
+        height: 72px;
+        font-size: 1rem;
+        border-radius: 14px;
+    }
+
+    .category-material-icon {
+        font-size: 1.7rem !important;
+        margin-bottom: 2px;
+    }
+
+    .category-arasaac-icon {
+        width: 30px;
+        height: 30px;
+        margin-bottom: 2px;
+    }
+
+    button:hover,
+    select:hover,
+    .phrase-btn:hover,
+    .nav-btn:hover,
+    .ctrl-btn:hover,
+    .gaze-hover,
+    .nav-btn.active-nav {
+        outline-width: 3px;
+        outline-offset: 2px;
+    }
+}
+/* 手機很窄時：九宮格仍維持 3x3，但按鈕內容縮小 */
+@media (max-width: 480px) {
+    button:hover,
+    select:hover,
+    .phrase-btn:hover,
+    .nav-btn:hover,
+    .ctrl-btn:hover,
+    .gaze-hover,
+    .nav-btn.active-nav {
+        outline-width: 3px;
+        outline-offset: 2px;
+    }
+
+    #grid-container {
+        gap: 6px !important;
+    }
+
+    .phrase-btn {
+        border-width: 2px;
+        box-shadow: 0 4px 0 #cbd5e1;
+    }
+
+    .text-main {
+        font-size: clamp(0.85rem, 4vw, 1.1rem);
+    }
+
+    .nav-btn {
+        height: clamp(58px, 11vh, 82px);
+    }
+
+    .category-material-icon {
+        font-size: clamp(24px, 7vw, 34px) !important;
+    }
+
+    .category-arasaac-icon {
+        width: clamp(24px, 7vw, 34px);
+        height: clamp(24px, 7vw, 34px);
+    }
+}
+    </style>
+</head>
+
+<body class="min-h-screen flex flex-col bg-slate-100 text-slate-800">
+    <div id="loading-status">模型載入中，請稍候...</div>
+    <div id="head-cursor"></div>
+    <video id="webcam-preview" autoplay playsinline muted></video>
+
+    <div id="sidebar-overlay" onclick="toggleSettingsMenu()" class="fixed inset-0 bg-black/50 opacity-0 pointer-events-none transition-opacity"></div>
+    <div id="settings-sidebar" class="fixed top-0 left-0 h-full w-80 bg-white shadow-2xl p-6 transform -translate-x-full flex flex-col gap-6">
+        <div class="flex justify-between items-center border-b pb-3">
+            <h2 class="text-xl font-black flex items-center gap-2 text-indigo-900">
+                <span class="material-symbols-outlined">settings</span>系統進階設定
+            </h2>
+            <button onclick="toggleSettingsMenu()" class="text-slate-400 hover:text-slate-600">
+                <span class="material-symbols-outlined" style="font-size: 2rem;">close</span>
+            </button>
+        </div>
+        
+        <div class="flex flex-col gap-2">
+            <label class="font-bold text-slate-700 flex justify-between">
+                <span>鼠標左右靈敏度(頭控與眼控的鼠標)</span>
+                <span id="val-sensX" class="text-indigo-600">6.0</span>
+            </label>
+            <input type="range" id="input-sensX" min="1" max="50" step="0.5" value="6.0" oninput="updateSettingsFromUI()" class="w-full h-3 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+        </div>
+
+        <div class="flex flex-col gap-2">
+            <label class="font-bold text-slate-700 flex justify-between">
+                <span>鼠標上下靈敏度(頭控與眼控的鼠標)</span>
+                <span id="val-sensY" class="text-indigo-600">6.0</span>
+            </label>
+            <input type="range" id="input-sensY" min="1" max="50" step="0.5" value="6.0" oninput="updateSettingsFromUI()" class="w-full h-3 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+        </div>
+
+        <div class="flex flex-col gap-2">
+            <label class="font-bold text-slate-700 flex justify-between">
+                <span>按鈕注視延遲時間</span>
+                <span id="val-dwell" class="text-indigo-600">2.2 秒</span>
+            </label>
+            <input type="range" id="input-dwell" min="0.5" max="5.0" step="0.1" value="2.2" oninput="updateSettingsFromUI()" class="w-full h-3 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+            <p class="text-xs text-slate-400">提示：帕金森氏症患者若有較高頻率顫抖，建議將時間拉長（如 2.5秒以上）以防誤觸。</p>
+        </div>
+
+        <div class="border-t pt-4 mt-2">
+            <button onclick="openVocabularyModal()" class="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined">menu_book</span>自訂詞彙介面
+            </button>
+<a 
+    href="https://drive.google.com/uc?export=download&id=15AtDeTOaacwMOWBW6aHYWkkW_hXdkvyu"
+    download="PDAAC-win.zip"
+    class="block mt-3"
+>
+    <button class="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined">download</span>
+        安裝 Windows 版本
+    </button>
+</a>       </div>
+
+        <div class="mt-auto border-t pt-4">
+            <button onclick="toggleSettingsMenu()" class="w-full py-3 bg-slate-800 text-white font-bold rounded-xl shadow-md hover:bg-slate-950 transition-colors">
+                完成並儲存
+            </button>
+        </div>
+    </div>
+
+    <div id="vocab-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm hidden z-[10100] flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-5xl h-[85vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+            <div class="bg-indigo-900 text-white p-6 flex justify-between items-center shrink-0">
+                <div>
+                    <h3 class="text-2xl font-black flex items-center gap-2">
+                        <span class="material-symbols-outlined text-3xl">menu_book</span> 自訂詞彙介面
+                    </h3>
+                    <p class="text-indigo-200 text-sm mt-1">請為各類別分別挑選【剛好 9 個】核心詞彙放置於主介面上。</p>
+                </div>
+                <button onclick="closeVocabularyModal()" class="text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors">
+                    <span class="material-symbols-outlined" style="font-size: 2rem;">close</span>
+                </button>
+            </div>
+
+            <div class="bg-slate-100 p-3 flex gap-2 border-b shrink-0 overflow-x-auto no-scrollbar">
+                <button id="tab-v-common" onclick="switchVocabTab('common')" class="px-6 py-2.5 font-black text-lg rounded-xl transition-all bg-indigo-600 text-white shadow-md">常用</button>
+                <button id="tab-v-eat" onclick="switchVocabTab('eat')" class="px-6 py-2.5 font-black text-lg rounded-xl transition-all bg-white text-slate-700 hover:bg-slate-200">食</button>
+                <button id="tab-v-cloth" onclick="switchVocabTab('cloth')" class="px-6 py-2.5 font-black text-lg rounded-xl transition-all bg-white text-slate-700 hover:bg-slate-200">衣</button>
+                <button id="tab-v-live" onclick="switchVocabTab('live')" class="px-6 py-2.5 font-black text-lg rounded-xl transition-all bg-white text-slate-700 hover:bg-slate-200">住</button>
+                <button id="tab-v-move" onclick="switchVocabTab('move')" class="px-6 py-2.5 font-black text-lg rounded-xl transition-all bg-white text-slate-700 hover:bg-slate-200">行</button>
+            </div>
+
+                        <div class="bg-amber-50 border-b border-amber-200 px-6 py-2 flex justify-between items-center shrink-0">
+                <span class="text-amber-800 font-bold flex items-center gap-1 text-sm">                    <span class="material-symbols-outlined text-base">info</span> 點擊方格以勾選或取消，每個分類必須正好選擇 9 個詞彙。
+                </span>
+                <span id="vocab-counter" class="bg-indigo-100 text-indigo-900 font-black px-4 py-1 rounded-full text-base border border-indigo-300">
+                    當前類別已選：0 / 9
+                </span>
+            </div>
+            <div class="bg-white border-b px-6 py-3 shrink-0">
+                <input
+                    id="vocab-search-input"
+                    type="search"
+                    placeholder="搜尋目前分類詞彙..."
+                    oninput="searchVocabulary(this.value)"
+                    class="w-full px-4 py-3 rounded-xl border-2 border-slate-200 text-lg font-bold outline-none focus:border-indigo-500"
+                >
+            </div>
+
+            <div id="vocab-selection-grid" class="flex-grow overflow-y-auto p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 bg-slate-50">
+                </div>
+
+            <div class="p-4 bg-slate-100 border-t flex justify-end gap-3 shrink-0">
+                <button onclick="closeVocabularyModal()" class="px-6 py-3 bg-slate-400 text-white font-black rounded-xl hover:bg-slate-500 transition-colors text-lg">
+                    取消變更
+                </button>
+                <button onclick="saveVocabularySelection()" class="px-8 py-3 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 shadow-md transition-colors text-lg flex items-center gap-2">
+                    <span class="material-symbols-outlined">save</span> 確認儲存並套用
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex gap-3 mb-2">
+        <button onclick="toggleSettingsMenu()" id="btn-settings-toggle"
+            class="w-20 h-[60px] bg-slate-600 hover:bg-slate-700 text-white font-bold rounded-xl shadow-lg transition-all flex flex-col items-center justify-center">
+            <span class="material-symbols-outlined" style="font-size: 1.6rem;">settings</span>
+            <span class="text-[10px]">設定</span>
+        </button>
+
+        <button onclick="toggleLanguage()" id="btn-lang-toggle"
+            class="w-36 h-[60px] bg-slate-700 hover:bg-slate-800 text-white font-bold rounded-xl shadow-lg transition-all flex flex-col items-center justify-center gap-1">
+            <span class="material-symbols-outlined" style="font-size: 1.4rem;">translate</span>
+            <span class="text-xs" id="current-lang-text">中文(國語)</span>
+        </button>
+
+        <select id="btn-mode" onchange="switchControlMode(this.value)"
+            class="w-32 h-[60px] bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-center shadow-lg transition-colors cursor-pointer outline-none px-2">
+            <option value="touch" selected>模式：觸控</option>
+            <option value="head">模式：頭控</option>
+            <option value="eye">模式：眼控</option>
+        </select>
+
+        <div id="display-box" class="flex-grow shadow-md no-scrollbar">
+            <span id="output"></span>
+        </div>
+
+        <button id="btn-play" onclick="playAll()"
+            class="ctrl-btn w-24 h-[60px] bg-green-600 text-white rounded-xl font-bold flex flex-col items-center justify-center shadow-lg">
+            <div class="gaze-progress"></div>
+            <div class="btn-content">
+                <span class="material-symbols-outlined" style="font-size: 1.6rem;">play_circle</span>
+                <span class="text-xs">播放</span>
+            </div>
+        </button>
+
+        <button id="btn-clear" onclick="clearAll()"
+            class="ctrl-btn w-24 h-[60px] bg-red-500 text-white rounded-xl font-bold flex flex-col items-center justify-center shadow-lg">
+            <div class="gaze-progress"></div>
+            <div class="btn-content">
+                <span class="material-symbols-outlined" style="font-size: 1.6rem;">delete_sweep</span>
+                <span class="text-xs">清除</span>
+            </div>
+        </button>
+    </div>
+
+    <div id="grid-container"
+        class="flex-grow grid grid-cols-3 grid-rows-3 gap-4 mb-4 p-1 pb-3">
+        </div>
+
+    <div class="grid grid-cols-5 gap-3 pb-2">
+    <button id="nav-common" onclick="updateGrid('common')" class="nav-btn bg-gray-500">
+        <div class="gaze-progress"></div>
+        <span class="btn-content">
+            <span class="material-symbols-outlined category-material-icon">forum</span>
+            <span>常用</span>
+        </span>
+    </button>
+
+    <button id="nav-eat" onclick="updateGrid('eat')" class="nav-btn bg-orange-500">
+        <div class="gaze-progress"></div>
+        <span class="btn-content">
+            <span class="material-symbols-outlined category-material-icon">restaurant</span>
+            <span>食</span>
+        </span>
+    </button>
+
+    <button id="nav-cloth" onclick="updateGrid('cloth')" class="nav-btn bg-blue-500">
+        <div class="gaze-progress"></div>
+        <span class="btn-content">
+            <span class="material-symbols-outlined category-material-icon">checkroom</span>
+            <span>衣</span>
+        </span>
+    </button>
+
+    <button id="nav-live" onclick="updateGrid('live')" class="nav-btn bg-green-500">
+        <div class="gaze-progress"></div>
+        <span class="btn-content">
+            <span class="material-symbols-outlined category-material-icon">home</span>
+            <span>住</span>
+        </span>
+    </button>
+
+    <button id="nav-move" onclick="updateGrid('move')" class="nav-btn bg-purple-500">
+        <div class="gaze-progress"></div>
+        <span class="btn-content">
+            <span class="material-symbols-outlined category-material-icon">directions_walk</span>
+            <span>行</span>
+        </span>
+    </button>
+</div>
+    <script>
+        // 龐大本土特教/輔具中心公開圖冊基礎詞彙庫 (一整個龐大詞彙庫，供後續客製化選取九個)
+        const FULL_VOCABULARY_DATABASE = {
+            'common': [
+                ['你好', 'waving_hand', 'hello'], ['謝謝', 'volunteer_activism', 'thank you'], ['請幫我', 'front_hand', 'help'], 
+                ['對不起', 'sentiment_dissatisfied', 'sorry'], ['是的', 'check_circle', 'yes'], 
+                ['不是', 'cancel', 'no'], ['再見', 'exit_to_app', 'goodbye'],
+                ['早安', 'light_mode', 'good morning'], ['不舒服', 'sick', 'sick'], ['救命', 'campaign', 'emergency'],
+                ['高興', 'sentiment_satisfied', 'happy'], ['生氣', 'mood_bad', 'angry'],
+                ['等一下', 'hourglass_empty', 'wait'], ['不知道', 'help', 'i do not know'], ['要看醫生', 'medical_services', 'doctor'],
+                ['午安', 'wb_sunny', 'good afternoon'], ['晚安', 'bedtime', 'good night'], ['沒關係', 'thumb_up', 'it does not matter'],
+                ['很好', 'recommend', 'very good'], ['不好', 'thumb_down', 'bad'], ['喜歡', 'favorite', 'like'],
+                ['討厭', 'heart_broken', 'hate'], ['害怕', 'gasp', 'afraid'], ['緊張', 'pulse', 'nervous'],
+                ['難過', 'mood_bad', 'sad'], ['無聊', 'sentiment_neutral', 'bored'], ['累了', 'battery_charging_20', 'tired'],
+                ['沒事', 'health_and_safety', 'all right'], ['小心', 'warning', 'careful'], ['恭喜', 'celebration', 'congratulations'],
+                ['拜託', 'pan_tool', 'please'], ['加油', 'fitness_center', 'cheer up'], ['可以', 'task_alt', 'allowed'],
+                ['不可以', 'block', 'forbidden'], ['要', 'add_circle', 'want'], ['不要', 'do_not_disturb_on', 'do not want'],
+                ['對', 'done', 'correct'], ['不對', 'close', 'wrong'], ['真的嗎', 'live_help', 'really'],
+                ['誰', 'person_search', 'who'], ['什麼', 'help_center', 'what'], ['哪裡', 'location_on', 'where'],
+                ['什麼時候', 'schedule', 'when'], ['為什麼', 'quiz', 'why'], ['多少', 'monetization_on', 'how much'],
+                ['你', 'person', 'you'], ['我', 'person', 'i'], ['他', 'person', 'he'],
+                ['我們', 'group', 'we'], ['你們', 'group', 'you plural'], ['他們', 'group', 'they'],
+                ['大家', 'groups', 'everyone'], ['朋友', 'diversity_3', 'friend'], ['家人', 'home_health', 'family'],
+                ['醫生', 'medical_services', 'doctor'], ['護理師', 'vaccines', 'nurse'], ['治療師', 'physical_therapy', 'therapist'],
+                ['志工', 'handshake', 'volunteer'], ['社工', 'badge', 'social worker'], ['看護', 'elderly', 'caregiver'],
+                ['先生', 'man', 'mister'], ['小姐', 'woman', 'miss'], ['聽懂了', 'record_voice_over', 'understand'],
+                ['聽不懂', 'voice_over_off', 'do not understand'], ['忘記了', 'question_mark', 'forget'], ['記起來了', 'psychology', 'remember'],
+                ['我想想', 'hourglass_top', 'think'], ['快一點', 'speed', 'fast'], ['慢一點', 'slow_motion_video', 'slow'],
+                ['重來', 'replay', 'restart'], ['確定', 'verified', 'confirm'], ['取消', 'dangerous', 'cancel action'],
+                ['安靜', 'volume_off', 'quiet'], ['大聲點', 'volume_up', 'louder'], ['小聲點', 'volume_down', 'softer'],
+                ['好熱鬧', 'festival', 'lively'], ['太吵了', 'hearing_disabled', 'noisy'], ['舒服', 'spa', 'comfortable'],
+                ['痛', 'personal_injury', 'pain'], ['癢', 'back_hand', 'itch'], ['暈', 'motion_photos_off', 'dizzy'],
+                ['麻', 'waves', 'numb'], ['冷', 'ac_unit', 'cold feeling'], ['熱', 'wb_sunny', 'hot feeling'],
+                ['沒力氣', 'battery_0_bar', 'weak'], ['喘不過氣', 'airware', 'shortness of breath'], ['沒問題', 'check_box', 'no problem'],
+                ['可能吧', 'flaky', 'maybe'], ['希望', 'auto_awesome', 'hope'], ['好運', 'casino', 'good luck'],
+                ['秘密', 'privacy_tip', 'secret'], ['開玩笑', 'sentiment_very_satisfied', 'joke'], ['真的', 'gavel', 'true'],
+                ['假的', 'gavel', 'false'], ['重要', 'label_important', 'important'], ['隨便', 'shuffle', 'whatever'],
+                ['差不多', 'dynamic_form', 'almost'], ['完全沒有', 'layers_clear', 'none at all'], ['有一點', 'hdr_strong', 'a little bit'],
+                ['非常多', 'all_inclusive', 'a lot'], ['隨時可以', 'calendar_today', 'anytime'], ['結束了', 'disabled_by_default', 'finished']
+            ],
+            'eat': [
+                ['肚子餓', 'restaurant', 'hungry'], ['喝水', 'local_drink', 'drink water'], ['吃藥', 'medication', 'medicine'], 
+                ['水果', 'nutrition', 'fruit'], ['太冷了', 'ac_unit', 'cold'], 
+                ['吃飽了', 'done_all', 'full'], ['慢慢吃', 'timer', 'slowly'], ['喝湯', 'soup_kitchen', 'soup'],
+                ['吃白飯', 'rice_bowl', 'rice'], ['想吃麵', 'ramen_dining', 'noodles'], ['想吃麵包', 'bakery_dining', 'bread'],
+                ['喝牛奶', 'egg_alt', 'milk'], ['喝豆漿', 'local_cafe', 'soy milk'], ['喝茶', 'emoji_food_beverage', 'tea'],
+                ['喝咖啡', 'coffee', 'coffee'], ['喝果汁', 'icecream', 'juice'], ['想吃肉', 'set_meal', 'meat'],
+                ['想吃魚', 'set_meal', 'fish'], ['想吃菜', 'grass', 'vegetables'], ['想吃蛋', 'egg', 'egg'],
+                ['想吃豆腐', 'layers', 'tofu'], ['吃點心', 'cake', 'snack'], ['吃餅乾', 'cookie', 'biscuit'],
+                ['吃蛋糕', 'cake', 'cake'], ['吃水果', 'bento'], ['蘋果', 'eco', 'apple'],
+                ['香蕉', 'brightness_1', 'banana'], ['葡萄', 'blur_on', 'grapes'], ['西瓜', 'pie_chart', 'watermelon'],
+                ['橘子', 'circle', 'orange fruit'], ['木瓜', 'oval', 'papaya'], ['要甜的', 'cookie', 'sweet'],
+                ['要鹹的', 'salt', 'salty'], ['要酸的', 'lemon', 'sour'], ['苦苦的', 'science', 'bitter'],
+                ['太辣了', 'local_fire_department', 'spicy'], ['太燙了', 'whatshot', 'hot food'], ['冰淇淋', 'icecream', 'ice cream'],
+                ['軟一點', 'cloud', 'soft food'], ['硬一點', 'hardware', 'hard food'], ['切小塊', 'content_cut', 'cut pieces'],
+                ['打成泥', 'blender', 'puréed food'], ['用湯匙', 'spoon', 'spoon'], ['用筷子', 'chopsticks', 'chopsticks'],
+                ['用吸管', 'local_bar', 'straw'], ['拿碗', 'rice_bowl', 'bowl'], ['拿盤子', 'flatware', 'plate'],
+                ['拿杯子', 'local_cafe', 'cup'], ['拿衛生紙', 'layers', 'tissue'], ['擦嘴巴', 'face', 'wipe mouth'],
+                ['流口水', 'water_drop', 'drool'], ['吞不下', 'block', 'difficulty swallowing'], ['嗆到了', 'air', 'choke'],
+                ['口渴', 'water_drop', 'thirsty'], ['再一碗', 'add', 'another bowl'], ['不要了', 'cancel', 'no more food'],
+                ['很好吃', 'thumb_up', 'delicious'], ['沒味道', 'texture', 'tasteless'], ['壞掉了', 'coronavirus', 'spoiled food'],
+                ['早餐', 'wb_twilight', 'breakfast'], ['午餐', 'wb_sunny', 'lunch'], ['晚餐', 'bedtime', 'dinner'],
+                ['宵夜', 'nightlight_round', 'supper'], ['想喝酒', 'local_bar', 'alcohol'], ['想喝汽水', 'local_drink', 'soda'],
+                ['想吃粥', 'rice_bowl', 'porridge'], ['水餃', 'bento', 'dumpling'], ['火鍋', 'local_fire_department', 'hotpot'],
+                ['烤肉', 'outdoor_grill', 'barbecue'], ['漢堡', 'lunch_dining', 'hamburger'], ['薯條', 'fastfood', 'french fries'],
+                ['披薩', 'pizza_dining', 'pizza'], ['壽司', 'set_meal', 'sushi'], ['沙拉', 'grass', 'salad'],
+                ['巧克力', 'bento', 'chocolate'], ['糖果', 'candy', 'candy'], ['紅豆湯', 'soup_kitchen', 'red bean soup'],
+                ['加糖', 'add', 'add sugar'], ['加鹽', 'add', 'add salt'], ['少油', 'opacity', 'less oil'],
+                ['去冰', 'ac_unit', 'no ice'], ['微糖', 'liquor', 'less sugar'], ['多喝水', 'water', 'drink more water'],
+                ['維他命', 'medication', 'vitamin'], ['鈣片', 'brightness_low', 'calcium supplement'], ['胃痛', 'sick', 'stomach ache'],
+                ['想吐', 'sick', 'nausea'], ['脹氣', 'bubble_chart', 'flatulence'], ['消化不良', 'reorder', 'indigestion'],
+                ['空腹吃', 'calendar_today', 'fasting medication'], ['飯後吃', 'done', 'after meals medication'], ['配溫水', 'thermostat', 'warm water']
+            ],
+            'cloth': [
+                ['太冷了', 'severe_cold', 'cold'], ['太熱了', 'device_thermostat', 'hot'], ['換衣服', 'checkroom', 'change clothes'], 
+                ['外套', 'dry_cleaning', 'jacket'], ['脫衣服', 'accessibility_new', 'undress'], ['尿布濕', 'baby_changing_station', 'diaper'], 
+                ['洗澡', 'bathtub', 'bath'], ['穿襪子', 'socks', 'socks'], ['穿鞋子', 'ice_skating', 'shoes'], 
+                ['戴帽子', 'execution_room', 'hat'], ['長褲', 'airline_seat_legroom_extra', 'trousers'],
+                ['短褲', 'shutter_speed', 'shorts'], ['襯衫', 'checkroom', 'shirt'], ['T恤', 'checkroom', 't-shirt'],
+                ['毛衣', 'textile', 'sweater'], ['內衣', 'checkroom', 'underwear'], ['內褲', 'checkroom', 'underpants'],
+                ['睡衣', 'bedding', 'pyjamas'], ['洋裝', 'checkroom', 'dress'], ['裙子', 'checkroom', 'skirt'],
+                ['背心', 'checkroom', 'vest'], ['雨衣', 'umbrella', 'raincoat'], ['手套', 'back_hand', 'gloves'],
+                ['圍巾', 'stadium', 'scarf'], ['口罩', 'masks', 'mask'], ['皮帶', 'horizontal_rule', 'belt'],
+                ['領帶', 'style', 'tie'], ['拖鞋', 'hotel_class', 'slippers'], ['運動鞋', 'snowboarding', 'sneakers'],
+                ['皮鞋', 'gavel', 'leather shoes'], ['涼鞋', 'wb_cloudy', 'sandals'], ['靴子', 'ice_skating', 'boots'],
+                ['布鞋', 'Directions_run', 'canvas shoes'], ['髒了', 'cookie', 'dirty clothes'], ['濕了', 'water_drop', 'wet clothes'],
+                ['破了', 'heart_broken', 'torn clothes'], ['太緊了', 'compress', 'too tight'], ['太鬆了', 'expand', 'too loose'],
+                ['很好看', 'style', 'beautiful clothes'], ['太厚了', 'layers', 'too thick'], ['太薄了', 'density_large', 'too thin'],
+                ['要洗衣服', 'local_laundry_service', 'wash clothes'], ['晾衣服', 'wb_sunny', 'hang clothes'], ['收衣服', 'inventory_2', 'collect clothes'],
+                ['摺衣服', 'inventory', 'fold clothes'], ['衣櫃', 'door_sliding', 'wardrobe'], ['穿衣服', 'accessibility_new', 'dress oneself'],
+                ['扣鈕扣', 'radio_button_checked', 'button up'], ['解鈕扣', 'radio_button_unchecked', 'unbutton'], ['拉拉鍊', 'unfold_more', 'zip up'],
+                ['解拉鍊', 'unfold_less', 'unzip'], ['魔鬼氈', 'texture', 'velcro'], ['繫鞋帶', 'gesture', 'tie shoelaces'],
+                ['梳頭髮', 'brush', 'comb hair'], ['剪頭髮', 'content_cut', 'cut hair'], ['洗頭髮', 'water_drop', 'wash hair'],
+                ['刮鬍子', 'content_cut', 'shave'], ['刷牙', 'cleaning_services', 'brush teeth'], ['洗臉', 'face', 'wash face'],
+                ['剪指甲', 'content_cut', 'cut nails'], ['擦乳液', 'clean_hands', 'apply lotion'], ['防曬乳', 'wb_sunny', 'sunscreen'],
+                ['戴眼鏡', 'visibility', 'wear glasses'], ['拿手帕', 'layers', 'handkerchief'], ['戴手錶', 'watch', 'wear watch'],
+                ['圍兜兜', 'child_care', 'bib'], ['護膝', 'accessibility', 'knee pads'], ['護腕', 'back_hand', 'wrist brace'],
+                ['束腹帶', 'accessibility', 'abdominal binder'], ['彈性襪', 'socks', 'compression stockings'], ['紅色衣服', 'circle', 'red clothing'],
+                ['藍色衣服', 'circle', 'blue clothing'], ['黃色衣服', 'circle', 'yellow clothing'], ['綠色衣服', 'circle', 'green clothing'],
+                ['黑色衣服', 'circle', 'black clothing'], ['白色衣服', 'circle', 'white clothing'], ['新衣服', 'fiber_new', 'new clothes'],
+                ['舊衣服', 'history', 'old clothes'], ['純棉的', 'cloud', 'cotton clothes'], ['保暖內衣', 'wb_twilight', 'thermal underwear'],
+                ['遮陽帽', 'wb_sunny', 'sun hat'], ['毛帽', 'ac_unit', 'woolen hat'], ['泳衣', 'pool', 'swimsuit'],
+                ['圍過來', 'compress', 'wrap scarf'], ['幫我拿鞋', 'ice_skating', 'bring shoes'], ['鞋子髒了', 'warning', 'dirty shoes'],
+                ['襪子破了', 'bug_report', 'torn socks'], ['換鞋墊', 'layers', 'change insoles'], ['衣服冰冰的', 'ac_unit', 'cold clothing'],
+                ['想要這件', 'ads_click', 'want this clothing'], ['不要這件', 'cancel', 'do not want this clothing'], ['試穿', 'accessibility_new', 'try on clothes']
+            ],
+            'live': [
+                ['想睡覺', 'sleep', 'sleep'], ['上廁所', 'wc', 'toilet'], ['看電視', 'tv', 'watch tv'], 
+                ['起來', 'upload', 'get up'], ['開冷氣', 'mode_fan', 'air conditioner'], ['蓋被子', 'single_bed', 'blanket'],
+                ['躺下', 'download', 'lie down'], ['翻身', 'autorenew', 'turn over'], ['坐起來', 'accessibility', 'sit up'],
+                ['吹風機', 'wind', 'hairdryer'], ['開燈', 'lightbulb', 'turn on light'], ['關燈', 'lightbulb_outline', 'turn off light'],
+                ['開窗戶', 'window', 'open window'], ['關窗戶', 'window', 'close window'], ['開門', 'door_front', 'open door'],
+                ['關門', 'door_front', 'close door'], ['吹電風扇', 'mode_fan', 'fan'], ['吹暖氣', 'whatshot', 'heater'],
+                ['拿枕頭', 'bed', 'pillow'], ['床太硬', 'hardware', 'hard bed'], ['床太軟', 'cloud', 'soft bed'],
+                ['收音機', 'radio', 'radio'], ['聽音樂', 'music_note', 'listen to music'], ['看書', 'menu_book', 'read book'],
+                ['看報紙', 'newspaper', 'read newspaper'], ['用手機', 'smartphone', 'use phone'], ['打電話', 'phone', 'make phone call'],
+                ['視訊', 'videocam', 'video call'], ['充電器', 'battery_charging_full', 'charger'], ['Wifi', 'wifi', 'wifi'],
+                ['睡不著', 'wb_twilight', 'insomnia'], ['做惡夢', 'gasp', 'nightmare'], ['有蚊子', 'bug_report', 'mosquito'],
+                ['幫我拍背', 'back_hand', 'pat back'], ['幫我按摩', 'spa', 'massage'], ['拉窗簾', 'blinds', 'draw curtains'],
+                ['家裡', 'home', 'home'], ['客廳', 'chair', 'living room'], ['臥室', 'bed', 'bedroom'],
+                ['浴室', 'bathtub', 'bathroom'], ['廚房', 'countertops', 'kitchen'], ['陽台', 'deck', 'balcony'],
+                ['掃地', 'broom', 'sweep floor'], ['拖地', 'layers', 'mop floor'], ['倒垃圾', 'delete', 'throw away trash'],
+                ['洗碗', 'flatware', 'wash dishes'], ['澆花', 'local_florist', 'water flowers'], ['抱抱', 'volunteer_activism', 'hug'],
+                ['聊天', 'chat', 'chat'], ['安靜點', 'volume_off', 'be quiet'], ['找鑰匙', 'vpn_key', 'find keys'],
+                ['鎖門', 'lock', 'lock door'], ['開鎖', 'lock_open', 'unlock door'], ['沙發', 'chair', 'sofa'],
+                ['桌子', 'table_restaurant', 'table'], ['椅子', 'chair', 'chair'], ['櫃子', 'kitchen', 'cabinet'],
+                ['冰箱', 'kitchen', 'refrigerator'], ['微波爐', 'microwave', 'microwave'], ['洗衣機', 'local_laundry_service', 'washing machine'],
+                ['熱水瓶', 'local_drink', 'thermos'], ['垃圾桶', 'delete', 'trash can'], ['鏡子', 'crop_portrait', 'mirror'],
+                ['時鐘', 'schedule', 'clock'], ['日曆', 'calendar_month', 'calendar'], ['全家福', 'family_history', 'family photo'],
+                ['有客人', 'group', 'visitor'], ['按門鈴', 'notification_important', 'ring doorbell'], ['收包裹', 'local_shipping', 'receive package'],
+                ['澆水', 'water_drop', 'watering'], ['寵物', 'pets', 'pet'], ['餵狗', 'pets', 'feed dog'],
+                ['餵貓', 'pets', 'feed cat'], ['剪報', 'content_cut', 'newspaper clipping'], ['相簿', 'photo_library', 'photo album'],
+                ['寫日記', 'edit', 'write diary'], ['畫畫', 'palette', 'draw painting'], ['下棋', 'grid_on', 'play chess'],
+                ['泡腳', 'bathtub', 'foot bath'], ['量血壓', 'favorite', 'measure blood pressure'], ['量體溫', 'device_thermostat', 'measure temperature'],
+                ['量血糖', 'bloodtype', 'measure blood sugar'], ['吃保健品', 'medication', 'take supplements'], ['擦地板', 'cleaning_services', 'wipe floor'],
+                ['洗衣服', 'wash', 'wash laundry'], ['除濕機', 'water', 'dehumidifier'], ['空氣清淨機', 'air', 'air purifier'],
+                ['吸塵器', 'layers', 'vacuum cleaner'], ['換床單', 'bedding', 'change sheets'], ['曬被子', 'wb_sunny', 'air blanket'],
+                ['整理房間', 'house', 'tidy room'], ['有小強', 'bug_report', 'cockroach'], ['漏水了', 'water_drop', 'water leak'],
+                ['停電了', 'flash_off', 'power outage'], ['好溫馨', 'volunteer_activism', 'cozy'], ['我想回家', 'home', 'want to go home']
+            ],
+            'move': [
+                ['散步', 'directions_walk', 'walk'], ['輪椅', 'accessible', 'wheelchair'], ['出門', 'door_open', 'go out'], 
+                ['爬樓梯', 'stairs', 'stairs'], ['去公園', 'park', 'park'],
+                ['坐電梯', 'elevator', 'elevator'], ['搭汽車', 'directions_car', 'car'], ['搭公車', 'directions_bus', 'bus'],
+                ['搭捷運', 'subway', 'subway'], ['搭高鐵', 'train', 'high speed rail'], ['搭火車', 'train', 'train'],
+                ['搭計程車', 'local_taxi', 'taxi'], ['騎機車', 'two_wheeler', 'motorcycle'], ['騎自行車', 'pedal_bike', 'bicycle'],
+                ['走路', 'directions_walk', 'walking'], ['扶我一下', 'front_hand', 'support me'], ['拐杖', 'elderly', 'cane'],
+                ['助行器', 'accessible_forward', 'walker'], ['推車', 'shopping_cart', 'stroller'], ['慢慢走', 'timer', 'walk slowly'],
+                ['停下來', 'back_hand', 'stop walking'], ['向左轉', 'arrow_back', 'turn left'], ['向右轉', 'arrow_forward', 'turn right'],
+                ['向前走', 'arrow_upward', 'go straight'], ['向後退', 'arrow_downward', 'go backward'], ['小心跌倒', 'warning', 'watch out for falls'],
+                ['去醫院', 'local_hospital', 'go to hospital'], ['去診所', 'medical_services', 'go to clinic'], ['去藥局', 'medication', 'go to pharmacy'],
+                ['去超市', 'shopping_cart', 'go to supermarket'], ['去菜市場', 'store', 'go to market'], ['去便利商店', 'storefront', 'go to convenience store'],
+                ['去餐廳', 'restaurant', 'go to restaurant'], ['去銀行', 'account_balance', 'go to bank'], ['去郵局', 'mail', 'go to post office'],
+                ['去學校', 'school', 'go to school'], ['去圖書館', 'local_library', 'go to library'], ['去百貨公司', 'mall', 'go to mall'],
+                ['去理髮店', 'content_cut', 'go to barbershop'], ['去拜拜', 'temple_hindu', 'go to temple'], ['去教會', 'church', 'go to church'],
+                ['去旅行', 'flight', 'go traveling'], ['看風景', 'landscape', 'watch scenery'], ['曬太陽', 'wb_sunny', 'sunbathe'],
+                ['吹吹風', 'wind', 'get some fresh air'], ['看花海', 'local_florist', 'see flowers'], ['看動物', 'pets', 'see animals'],
+                ['逛街', 'shopping_bag', 'go shopping'], ['買東西', 'payments', 'buy things'], ['找朋友', 'group', 'visit friends'],
+                ['回家', 'home', 'go home'], ['馬路', 'add_road', 'road'], ['斑馬線', 'reorder', 'crosswalk'],
+                ['紅綠燈', 'traffic', 'traffic light'], ['天橋', 'navigation', 'footbridge'], ['地下道', 'tunnel', 'underpass'],
+                ['人行道', 'directions_walk', 'sidewalk'], ['安全帶', 'gavel', 'fasten seatbelt'], ['開車窗', 'window', 'open car window'],
+                ['塞車了', 'car_crash', 'traffic jam'], ['迷路了', 'explore_off', 'get lost'], ['等車', 'departure_board', 'wait for bus'],
+                ['過馬路', 'directions_walk', 'cross road'], ['坐好', 'chair', 'sit properly'], ['煞車', 'pan_tool', 'brake'],
+                ['安全第一', 'gavel', 'safety first'], ['去海邊', 'waves', 'go to beach'], ['去爬山', 'terrain', 'go hiking'],
+                ['去博物館', 'museum', 'go to museum'], ['去電影院', 'movie', 'go to cinema'], ['去夜市', 'nightlife', 'go to night market'],
+                ['出國', 'flight_takeoff', 'go abroad'], ['搭飛機', 'flight', 'fly by plane'], ['行李箱', 'luggage', 'suitcase'],
+                ['護照', 'badge', 'passport'], ['地圖', 'map', 'map'], ['開導航', 'explore', 'turn on navigation'],
+                ['找車位', 'local_parking', 'find parking'], ['加油站', 'local_gas_station', 'gas station'], ['收費站', 'toll', 'toll booth'],
+                ['車子壞了', 'car_repair', 'car breakdown'], ['輪胎沒氣', 'tire_repair', 'flat tire'], ['小心開車', 'minor_crash', 'drive safely'],
+                ['太快了', 'speed', 'driving too fast'], ['太慢了', 'speed', 'driving too slow'], ['好漂亮', 'auto_awesome', 'beautiful view'],
+                ['累了想休息', 'hotel', 'tired want to rest'], ['風景很好', 'wb_image', 'scenery is good'], ['人好多', 'groups', 'crowded'],
+                ['沒車子', 'no_crash', 'no cars'], ['天氣好', 'wb_sunny', 'good weather'], ['下雨了', 'umbrella', 'raining'],
+                ['起霧了', 'cloudy_snowing', 'foggy'], ['風好大', 'air', 'windy'], ['出發吧', 'rocket_launch', 'let us go']
+            ]
+        };
+        // ARASAAC API 圖示串接：只影響圖示顯示，不碰頭控與眼控邏輯
+        const ARASAAC_SEARCH_BASE = 'https://api.arasaac.org/api/pictograms/en/search';
+        const ARASAAC_PICTOGRAM_BASE = 'https://api.arasaac.org/api/pictograms';
+        const arasaacIconCache = new Map();
+
+        async function getArasaacIconUrl(searchText) {
+            const keyword = String(searchText || '').trim().toLowerCase();
+            if (!keyword) return null;
+
+            if (arasaacIconCache.has(keyword)) {
+                return arasaacIconCache.get(keyword);
+            }
+
+            try {
+                const response = await fetch(`${ARASAAC_SEARCH_BASE}/${encodeURIComponent(keyword)}`);
+                if (!response.ok) throw new Error('ARASAAC search failed');
+
+                const results = await response.json();
+                const firstResult = Array.isArray(results) ? results[0] : null;
+                const pictogramId = firstResult?._id || firstResult?.id;
+
+                const iconUrl = pictogramId ? `${ARASAAC_PICTOGRAM_BASE}/${pictogramId}?download=false` : null;
+                arasaacIconCache.set(keyword, iconUrl);
+                return iconUrl;
+            } catch (error) {
+                console.warn('ARASAAC 圖示載入失敗，改用原本 Material Symbols：', searchText, error);
+                arasaacIconCache.set(keyword, null);
+                return null;
+            }
+        }
+
+        function getArasaacSearchKeyword(item) {
+            return item[2] || item[0];
+        }
+
+                async function replaceWithArasaacIcon(iconHolder, item, sizeClass = 'arasaac-icon') {
+            const iconUrl = await getArasaacIconUrl(getArasaacSearchKeyword(item));
+            if (!iconUrl || !iconHolder) return;
+
+            const img = new Image();
+            img.className = sizeClass;
+            img.alt = item[0];
+
+            img.onload = () => {
+                if (iconHolder.isConnected) {
+                    iconHolder.replaceWith(img);
+                }
+            };
+
+            img.onerror = () => {
+                console.warn('ARASAAC 圖片載入失敗，保留原本 Material Symbols：', item[0]);
+            };
+
+            img.src = iconUrl;
+        }
+        // 當前使用者配置在介面上的九個詞彙 (預設為前九個)
+        const menuData = {
+            'common': [...FULL_VOCABULARY_DATABASE['common'].slice(0, 9)],
+            'eat': [...FULL_VOCABULARY_DATABASE['eat'].slice(0, 9)],
+            'cloth': [...FULL_VOCABULARY_DATABASE['cloth'].slice(0, 9)],
+            'live': [...FULL_VOCABULARY_DATABASE['live'].slice(0, 9)],
+            'move': [...FULL_VOCABULARY_DATABASE['move'].slice(0, 9)]
+        };
+
+        // 記錄詞彙庫彈窗暫存的選取狀態
+        let tempSelectedVocab = { 'common': [], 'eat': [], 'cloth': [], 'live': [], 'move': [] };
+        let currentVocabTab = 'common';
+	let vocabSearchKeyword = '';
+        let lastClick = 0;
+        let currentHoveredElement = null;
+        let gazeStartTime = 0;
+        let DWEL_TIME = 2200; // 注視觸發時間 2.2 秒 (配合設定修改為 let 可變變數)
+
+        // 靈敏度設定
+        let SENSITIVITY_X = 6.0;
+        let SENSITIVITY_Y = 6.0;
+
+const TAIGI_TTS_ENDPOINT = ''; 
+// 填入你的台語 TTS API，例如：
+// https://你的服務網址/tts?text=
+
+const taigiAudioCache = new Map();
+
+const TAIGI_OVERRIDES = {
+    '你好': 'lí hó',
+    '謝謝': 'to-siā',
+    '請幫我': 'tshiánn pang guá',
+    '對不起': 'pháinn-sè',
+    '是的': 'sī',
+    '不是': 'm̄-sī',
+    '再見': 'tsài-kiàn',
+    '早安': 'tsá-khí hó',
+    '不舒服': 'bô sóng-khuài',
+    '救命': 'kiù-miā',
+    '高興': 'huann-hí',
+    '生氣': 'siunn-khì',
+    '等一下': 'tán tsi̍t ē',
+    '不知道': 'm̄-tsai',
+    '要看醫生': 'beh khuànn i-sing',
+    '午安': 'tiong-tàu hó',
+    '晚安': 'àm-an',
+    '沒關係': 'bô iàu-kín',
+    '很好': 'tsiok hó',
+    '不好': 'bô hó',
+    '喜歡': 'kah-ì',
+    '討厭': 'thó-ià',
+    '害怕': 'kiann',
+    '緊張': 'kín-tiunn',
+    '難過': 'kan-khóo',
+    '無聊': 'bô-liâu',
+    '累了': 'siān--ah',
+    '沒事': 'bô tāi-tsì',
+    '小心': 'sió-sim',
+    '恭喜': 'kiong-hí',
+    '拜託': 'pài-thok',
+    '加油': 'ka-iû',
+    '可以': 'ē-sái',
+    '不可以': 'bē-sái',
+    '要': 'beh',
+    '不要': 'mài',
+    '對': 'tio̍h',
+    '不對': 'm̄-tio̍h',
+    '真的嗎': 'tsin--ê--bô',
+    '誰': 'siáng',
+    '什麼': 'siánn-mih',
+    '哪裡': 'tó-uī',
+    '什麼時候': 'tang-sî',
+    '為什麼': 'uī-siánn-mih',
+    '多少': 'guā-tsē',
+    '你': 'lí',
+    '我': 'guá',
+    '他': 'i',
+    '我們': 'lán',
+    '你們': 'lín',
+    '他們': 'in',
+    '大家': 'ta̍k-ke',
+    '朋友': 'pîng-iú',
+    '家人': 'ka-lâng',
+    '醫生': 'i-sing',
+    '護理師': 'hōo-lí-su',
+    '治療師': 'tī-liâu-su',
+    '志工': 'tsì-kang',
+    '社工': 'siā-kang',
+    '看護': 'khuànn-hōo',
+    '先生': 'sian-sinn',
+    '小姐': 'sió-tsiá',
+    '聽懂了': 'thiann ū-hiáu--ah',
+    '聽不懂': 'thiann bô-hiáu',
+    '忘記了': 'bē-kì--ah',
+    '記起來了': 'kì khí-lâi--ah',
+    '我想想': 'guá siūnn-khuànn-māi',
+    '快一點': 'khah kín tsi̍t ē',
+    '慢一點': 'khah bān tsi̍t ē',
+    '重來': 'tiông-lâi',
+    '確定': 'khak-tīng',
+    '取消': 'tshú-siau',
+    '安靜': 'an-tsīng',
+    '大聲點': 'khah tuā-siann',
+    '小聲點': 'khah sió-siann',
+    '好熱鬧': 'tsiok jia̍t-lāu',
+    '太吵了': 'siunn tshá--ah',
+    '舒服': 'sóng-khuài',
+    '痛': 'thiànn',
+    '癢': 'tsiūnn',
+    '暈': 'hīn',
+    '麻': 'mâ',
+    '冷': 'kuánn',
+    '熱': 'joa̍h',
+    '沒力氣': 'bô la̍t',
+    '喘不過氣': 'tshuánn bē kuè-khì',
+    '沒問題': 'bô būn-tê',
+    '可能吧': 'khó-lîng--lah',
+    '希望': 'hi-bōng',
+    '好運': 'hó-ūn',
+    '秘密': 'pì-bi̍t',
+    '開玩笑': 'khui uân-siò',
+    '真的': 'tsin--ê',
+    '假的': 'ké--ê',
+    '重要': 'tiōng-iàu',
+    '隨便': 'suî-piān',
+    '差不多': 'tsha-put-to',
+    '完全沒有': 'uân-tsuân bô',
+    '有一點': 'ū tsi̍t-tiám',
+    '非常多': 'hui-siông tsē',
+    '隨時可以': 'suî-sî ē-sái',
+    '結束了': 'kiat-sok--ah',
+
+    '肚子餓': 'pak-tóo iau',
+    '喝水': 'lim tsuí',
+    '吃藥': 'tsia̍h io̍h',
+    '水果': 'tsuí-kó',
+    '吃飽了': 'tsia̍h pá--ah',
+    '慢慢吃': 'bān-bān-á tsia̍h',
+    '喝湯': 'lim thng',
+    '吃白飯': 'tsia̍h pn̄g',
+    '想吃麵': 'siūnn beh tsia̍h mī',
+    '想吃麵包': 'siūnn beh tsia̍h pháng',
+    '喝牛奶': 'lim gû-ling',
+    '喝豆漿': 'lim tāu-tsiunn',
+    '喝茶': 'lim tê',
+    '喝咖啡': 'lim ka-pi',
+    '喝果汁': 'lim kué-tsiap',
+    '想吃肉': 'siūnn beh tsia̍h bah',
+    '想吃魚': 'siūnn beh tsia̍h hî',
+    '想吃菜': 'siūnn beh tsia̍h tshài',
+    '想吃蛋': 'siūnn beh tsia̍h nn̄g',
+    '想吃豆腐': 'siūnn beh tsia̍h tāu-hū',
+    '吃點心': 'tsia̍h tiám-sim',
+    '吃餅乾': 'tsia̍h piánn-kuann',
+    '吃蛋糕': 'tsia̍h nńg-ko',
+    '吃水果': 'tsia̍h tsuí-kó',
+    '蘋果': 'phōng-kó',
+    '香蕉': 'king-tsio',
+    '葡萄': 'phû-tô',
+    '西瓜': 'si-koe',
+    '橘子': 'kiat-á',
+    '木瓜': 'bo̍k-koe',
+    '要甜的': 'beh tinn--ê',
+    '要鹹的': 'beh kiâm--ê',
+    '要酸的': 'beh sng--ê',
+    '苦苦的': 'khóo-khóo--ê',
+    '太辣了': 'siunn hia̍h--ah',
+    '太燙了': 'siunn thǹg--ah',
+    '冰淇淋': 'ping-kî-lîm',
+    '軟一點': 'khah nńg tsi̍t ē',
+    '硬一點': 'khah ngē tsi̍t ē',
+    '切小塊': 'tshiat sió tè',
+    '打成泥': 'phah-tsò nî',
+    '用湯匙': 'ēng thng-sî',
+    '用筷子': 'ēng tī',
+    '用吸管': 'ēng khip-kuán',
+    '拿碗': 'the̍h uánn',
+    '拿盤子': 'the̍h puânn-á',
+    '拿杯子': 'the̍h pue-á',
+    '拿衛生紙': 'the̍h uē-sing-tsuá',
+    '擦嘴巴': 'tshat tshuì',
+    '流口水': 'lâu tshuì-nuā',
+    '吞不下': 'thun bē lo̍h',
+    '嗆到了': 'tshiunn--tio̍h',
+    '口渴': 'tshuì-ta',
+    '再一碗': 'koh tsi̍t uánn',
+    '不要了': 'mài--ah',
+    '很好吃': 'tsiok hó-tsia̍h',
+    '沒味道': 'bô bī',
+    '壞掉了': 'phái--khì--ah',
+    '早餐': 'tsá-tǹg',
+    '午餐': 'tiong-tǹg',
+    '晚餐': 'àm-tǹg',
+    '宵夜': 'siau-iā',
+    '想喝酒': 'siūnn beh lim tsiú',
+    '想喝汽水': 'siūnn beh lim khì-tsuí',
+    '想吃粥': 'siūnn beh tsia̍h muê',
+    '水餃': 'tsuí-kiáu',
+    '火鍋': 'hué-ko',
+    '烤肉': 'khò bah',
+    '漢堡': 'hàn-pó',
+    '薯條': 'tsî-tsiâu',
+    '披薩': 'phì-sà',
+    '壽司': 'siū-suh',
+    '沙拉': 'sa-lah',
+    '巧克力': 'tshiáu-khuh-lí',
+    '糖果': 'thn̂g-kó',
+    '紅豆湯': 'âng-tāu-thng',
+    '加糖': 'ke thn̂g',
+    '加鹽': 'ke iâm',
+    '少油': 'tsió iû',
+    '去冰': 'khì ping',
+    '微糖': 'bî-thn̂g',
+    '多喝水': 'khah tsē lim tsuí',
+    '維他命': 'uî-tha-bín',
+    '鈣片': 'khài-phìnn',
+    '胃痛': 'uī thiànn',
+    '想吐': 'siūnn beh thòo',
+    '脹氣': 'tiùnn-khì',
+    '消化不良': 'siau-huà put-liông',
+    '空腹吃': 'khang pak-tóo tsia̍h',
+    '飯後吃': 'pn̄g āu tsia̍h',
+    '配溫水': 'phuè un-tsuí',
+
+    '太冷了': 'siunn kuánn--ah',
+    '太熱了': 'siunn joa̍h--ah',
+    '換衣服': 'uānn sann',
+    '外套': 'guā-thò',
+    '脫衣服': 'thǹg sann',
+    '尿布濕': 'jiō-pòo ta̍m--ah',
+    '洗澡': 'sé sing-khu',
+    '穿襪子': 'tshīng be̍h',
+    '穿鞋子': 'tshīng ê',
+    '戴帽子': 'tì bō-á',
+    '長褲': 'tn̂g-khòo',
+    '短褲': 'té-khòo',
+    '襯衫': 'sann',
+    'T恤': 'thih-sut',
+    '毛衣': 'mn̂g-sann',
+    '內衣': 'lāi-sann',
+    '內褲': 'lāi-khòo',
+    '睡衣': 'khùn-sann',
+    '洋裝': 'iûnn-tsong',
+    '裙子': 'kûn-á',
+    '背心': 'puē-sim',
+    '雨衣': 'hōo-i',
+    '手套': 'tshiú-thò',
+    '圍巾': 'uî-kin',
+    '口罩': 'kháu-tsàu',
+    '皮帶': 'phuê-tuà',
+    '領帶': 'niá-tuà',
+    '拖鞋': 'thua-ê',
+    '運動鞋': 'ūn-tōng-ê',
+    '皮鞋': 'phuê-ê',
+    '涼鞋': 'liâng-ê',
+    '靴子': 'hia-á',
+    '布鞋': 'pòo-ê',
+    '髒了': 'lah-sap--ah',
+    '濕了': 'ta̍m--ah',
+    '破了': 'phuà--ah',
+    '太緊了': 'siunn kín--ah',
+    '太鬆了': 'siunn sang--ah',
+    '很好看': 'tsiok hó-khuànn',
+    '太厚了': 'siunn kāu--ah',
+    '太薄了': 'siunn po̍h--ah',
+    '要洗衣服': 'beh sé sann',
+    '晾衣服': 'liàng sann',
+    '收衣服': 'siu sann',
+    '摺衣服': 'tsih sann',
+    '衣櫃': 'sann-kuī',
+    '穿衣服': 'tshīng sann',
+    '扣鈕扣': 'khàu liú-khàu',
+    '解鈕扣': 'kái liú-khàu',
+    '拉拉鍊': 'thua lián-á',
+    '解拉鍊': 'kái lián-á',
+    '魔鬼氈': 'môo-kuí-tsiam',
+    '繫鞋帶': 'hē ê-tuà',
+    '梳頭髮': 'se thâu-mn̂g',
+    '剪頭髮': 'tsián thâu-mn̂g',
+    '洗頭髮': 'sé thâu-mn̂g',
+    '刮鬍子': 'kuah hôo-tshiu',
+    '刷牙': 'tshing-khí tshuì-khí',
+    '洗臉': 'sé bīn',
+    '剪指甲': 'tsián tsí-kah',
+    '擦乳液': 'tshat lú-i̍k',
+    '防曬乳': 'hông-sài-lú',
+    '戴眼鏡': 'tì gánn-kiànn',
+    '拿手帕': 'the̍h tshiú-phè',
+    '戴手錶': 'tì tshiú-pió',
+    '圍兜兜': 'uî to-to',
+    '護膝': 'hōo-kha-thâu-u',
+    '護腕': 'hōo-tshiú-uán',
+    '束腹帶': 'sok-pak-tuà',
+    '彈性襪': 'tuân-sìng be̍h',
+    '紅色衣服': 'âng-sik sann',
+    '藍色衣服': 'nâ-sik sann',
+    '黃色衣服': 'n̂g-sik sann',
+    '綠色衣服': 'li̍k-sik sann',
+    '黑色衣服': 'oo-sik sann',
+    '白色衣服': 'pe̍h-sik sann',
+    '新衣服': 'sin sann',
+    '舊衣服': 'kū sann',
+    '純棉的': 'sûn mî--ê',
+    '保暖內衣': 'pó-luán lāi-sann',
+    '遮陽帽': 'jia-iûnn bō-á',
+    '毛帽': 'mn̂g-bō',
+    '泳衣': 'íng-i',
+    '圍過來': 'uî--kuè-lâi',
+    '幫我拿鞋': 'pang guá the̍h ê',
+    '鞋子髒了': 'ê lah-sap--ah',
+    '襪子破了': 'be̍h phuà--ah',
+    '換鞋墊': 'uānn ê-tiām',
+    '衣服冰冰的': 'sann ping-ping--ê',
+    '想要這件': 'siūnn beh tsit kiānn',
+    '不要這件': 'mài tsit kiānn',
+    '試穿': 'tshì-tshīng',
+
+    '想睡覺': 'siūnn beh khùn',
+    '上廁所': 'khì piān-sóo',
+    '看電視': 'khuànn tiān-sī',
+    '起來': 'khí-lâi',
+    '開冷氣': 'khui líng-khì',
+    '蓋被子': 'khàm phuē',
+    '躺下': 'tó lo̍h-khì',
+    '翻身': 'huan-sin',
+    '坐起來': 'tsē khí-lâi',
+    '吹風機': 'tshue-hong-ki',
+    '開燈': 'khui ting',
+    '關燈': 'kuainn ting',
+    '開窗戶': 'khui thang',
+    '關窗戶': 'kuainn thang',
+    '開門': 'khui mn̂g',
+    '關門': 'kuainn mn̂g',
+    '吹電風扇': 'tshue tiān-hong-sìnn',
+    '吹暖氣': 'tshue luán-khì',
+    '拿枕頭': 'the̍h tsím-thâu',
+    '床太硬': 'tshn̂g siunn ngē',
+    '床太軟': 'tshn̂g siunn nńg',
+    '收音機': 'siu-im-ki',
+    '聽音樂': 'thiann im-ga̍k',
+    '看書': 'khuànn tsu',
+    '看報紙': 'khuànn pò-tsuá',
+    '用手機': 'ēng tshiú-ki',
+    '打電話': 'phah tiān-uē',
+    '視訊': 'sī-sìn',
+    '充電器': 'tshiong-tiān-khì',
+    'Wifi': 'uai-fai',
+    '睡不著': 'khùn bē-tio̍h',
+    '做惡夢': 'tsò pháiⁿ-bāng',
+    '有蚊子': 'ū báng-á',
+    '幫我拍背': 'pang guá phah puē',
+    '幫我按摩': 'pang guá an-môo',
+    '拉窗簾': 'thua thang-liâm',
+    '家裡': 'tshù-lāi',
+    '客廳': 'kheh-thiann',
+    '臥室': 'pâng',
+    '浴室': 'ek-sik',
+    '廚房': 'tû-pâng',
+    '陽台': 'iông-tâi',
+    '掃地': 'sàu-tē',
+    '拖地': 'thua-tē',
+    '倒垃圾': 'tò lah-sap',
+    '洗碗': 'sé uánn',
+    '澆花': 'kà hue',
+    '抱抱': 'phō-phō',
+    '聊天': 'liâu-thian',
+    '安靜點': 'khah tiām--leh',
+    '找鑰匙': 'tshuē só-sî',
+    '鎖門': 'só mn̂g',
+    '開鎖': 'khui só',
+    '沙發': 'so-huat',
+    '桌子': 'toh-á',
+    '椅子': 'í-á',
+    '櫃子': 'kuī-á',
+    '冰箱': 'ping-siunn',
+    '微波爐': 'bî-pho-lôo',
+    '洗衣機': 'sé-sann-ki',
+    '熱水瓶': 'jia̍t-tsuí-pân',
+    '垃圾桶': 'lah-sap-tháng',
+    '鏡子': 'kiànn-á',
+    '時鐘': 'sî-tsing',
+    '日曆': 'ji̍t-li̍k',
+    '全家福': 'tsuân-ke-hok',
+    '有客人': 'ū kheh-lâng',
+    '按門鈴': 'àn mn̂g-lîng',
+    '收包裹': 'siu pau-kó',
+    '澆水': 'kà tsuí',
+    '寵物': 'thiáng-bu̍t',
+    '餵狗': 'tshī káu',
+    '餵貓': 'tshī niau',
+    '剪報': 'tsián pò-tsuá',
+    '相簿': 'siòng-phōo',
+    '寫日記': 'siá ji̍t-kì',
+    '畫畫': 'uē-uē',
+    '下棋': 'ē kî',
+    '泡腳': 'phàu kha',
+    '量血壓': 'niû hueh-ap',
+    '量體溫': 'niû thé-un',
+    '量血糖': 'niû hueh-thn̂g',
+    '吃保健品': 'tsia̍h pó-kiān-phín',
+    '擦地板': 'tshat tē-pán',
+    '洗衣服': 'sé sann',
+    '除濕機': 'tû-sip-ki',
+    '空氣清淨機': 'khong-khì tshing-tsīng-ki',
+    '吸塵器': 'khip-tîn-khì',
+    '換床單': 'uānn tshn̂g-tuann',
+    '曬被子': 'phak phuē',
+    '整理房間': 'tsíng-lí pâng',
+    '有小強': 'ū ka-tsua̍h',
+    '漏水了': 'lāu-tsuí--ah',
+    '停電了': 'thîng-tiān--ah',
+    '好溫馨': 'tsiok un-hing',
+    '我想回家': 'guá siūnn beh tńg tshù',
+
+    '散步': 'sàn-pōo',
+    '輪椅': 'liân-í',
+    '出門': 'tshut-mn̂g',
+    '爬樓梯': 'peh lâu-thui',
+    '去公園': 'khì kong-hn̂g',
+    '坐電梯': 'tsē tiān-thui',
+    '搭汽車': 'tah tshì-tshia',
+    '搭公車': 'tah kong-tshia',
+    '搭捷運': 'tah tsia̍t-ūn',
+    '搭高鐵': 'tah ko-thih',
+    '搭火車': 'tah hué-tshia',
+    '搭計程車': 'tah ke-tîng-tshia',
+    '騎機車': 'khiâ oo-tóo-bái',
+    '騎自行車': 'khiâ tsū-hîng-tshia',
+    '走路': 'kiânn-lōo',
+    '扶我一下': 'hû guá tsi̍t ē',
+    '拐杖': 'kuái-tiōng',
+    '助行器': 'tsōo-hîng-khì',
+    '推車': 'thui-tshia',
+    '慢慢走': 'bān-bān-á kiânn',
+    '停下來': 'thîng--lo̍h-lâi',
+    '向左轉': 'ńg tò-pîng',
+    '向右轉': 'ńg tsiànn-pîng',
+    '向前走': 'hiòng tsîng kiânn',
+    '向後退': 'hiòng āu thè',
+    '小心跌倒': 'sió-sim pua̍h-tó',
+    '去醫院': 'khì i-īnn',
+    '去診所': 'khì tsín-sóo',
+    '去藥局': 'khì io̍h-kio̍k',
+    '去超市': 'khì tshiau-tshī',
+    '去菜市場': 'khì tshài-tshī-tiûnn',
+    '去便利商店': 'khì piān-lī siong-tiàm',
+    '去餐廳': 'khì tshan-thiann',
+    '去銀行': 'khì gîn-hâng',
+    '去郵局': 'khì iû-kio̍k',
+    '去學校': 'khì ha̍k-hāu',
+    '去圖書館': 'khì tôo-su-kuán',
+    '去百貨公司': 'khì pik-huè kong-si',
+    '去理髮店': 'khì lí-huat-tiàm',
+    '去拜拜': 'khì pài-pài',
+    '去教會': 'khì kàu-huē',
+    '去旅行': 'khì lí-hîng',
+    '看風景': 'khuànn hong-kíng',
+    '曬太陽': 'phak thài-iông',
+    '吹吹風': 'tshue-tshue hong',
+    '看花海': 'khuànn hue-hái',
+    '看動物': 'khuànn tōng-bu̍t',
+    '逛街': 'kńg-ke',
+    '買東西': 'bé mi̍h-kiānn',
+    '找朋友': 'tshuē pîng-iú',
+    '回家': 'tńg tshù',
+    '馬路': 'má-lōo',
+    '斑馬線': 'pan-má-suànn',
+    '紅綠燈': 'âng-li̍k-ting',
+    '天橋': 'thian-kiô',
+    '地下道': 'tē-hā-tō',
+    '人行道': 'jîn-hîng-tō',
+    '安全帶': 'an-tsuân-tuà',
+    '開車窗': 'khui tshia-thang',
+    '塞車了': 'that-tshia--ah',
+    '迷路了': 'bê-lōo--ah',
+    '等車': 'tán tshia',
+    '過馬路': 'kuè má-lōo',
+    '坐好': 'tsē hó',
+    '煞車': 'sat-tshia',
+    '安全第一': 'an-tsuân tē-it',
+    '去海邊': 'khì hái-pinn',
+    '去爬山': 'khì peh-suann',
+    '去博物館': 'khì phok-bu̍t-kuán',
+    '去電影院': 'khì tiān-iánn-īnn',
+    '去夜市': 'khì iā-tshī',
+    '出國': 'tshut-kok',
+    '搭飛機': 'tah pue-ki',
+    '行李箱': 'hîng-lí-siunn',
+    '護照': 'hōo-tsiàu',
+    '地圖': 'tē-tôo',
+    '開導航': 'khui tō-hâng',
+    '找車位': 'tshuē tshia-uī',
+    '加油站': 'ka-iû-tsām',
+    '收費站': 'siu-huì-tsām',
+    '車子壞了': 'tshia phái--khì--ah',
+    '輪胎沒氣': 'lián-thai bô khì',
+    '小心開車': 'sió-sim khui-tshia',
+    '太快了': 'siunn kín--ah',
+    '太慢了': 'siunn bān--ah',
+    '好漂亮': 'tsiok suí',
+    '累了想休息': 'siān--ah siūnn beh hioh-khùn',
+    '風景很好': 'hong-kíng tsiok hó',
+    '人好多': 'lâng tsin tsē',
+    '沒車子': 'bô tshia',
+    '天氣好': 'thinn-khì hó',
+    '下雨了': 'loh-hōo--ah',
+    '起霧了': 'khí bū--ah',
+    '風好大': 'hong tsiok tuā',
+    '出發吧': 'tshut-huat--lah'
+};
+const taigiTextMap = Object.fromEntries(
+    Object.values(FULL_VOCABULARY_DATABASE)
+        .flat()
+        .map(item => [item[0], TAIGI_OVERRIDES[item[0]] || item[0]])
+);
+        let currentLanguage = 'zh-TW';
+        
+        // 控制模式：'touch' (觸控), 'head' (頭控), 'eye' (眼控)
+        let currentMode = 'touch'; 
+        let faceMesh = null;
+        let camera = null;
+        let isCameraRunning = false;
+        let isWebGazerInitialized = false; // 新增：記錄 WebGazer 是否初始化過
+
+        // 新增：切換設定選單的開關函式與 UI 數值雙向更新
+        function toggleSettingsMenu() {
+            const sidebar = document.getElementById('settings-sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            const isOpen = sidebar.classList.contains('translate-x-0');
+
+            if (isOpen) {
+                sidebar.classList.replace('translate-x-0', '-translate-x-full');
+                overlay.classList.replace('opacity-100', 'opacity-0');
+                overlay.classList.add('pointer-events-none');
+            } else {
+                // 開啟時，將當前運算變數的值回填到畫面的滑桿上
+                document.getElementById('input-sensX').value = SENSITIVITY_X;
+                document.getElementById('input-sensY').value = SENSITIVITY_Y;
+                document.getElementById('input-dwell').value = (DWEL_TIME / 1000).toFixed(1);
+                
+                document.getElementById('val-sensX').innerText = SENSITIVITY_X.toFixed(1);
+                document.getElementById('val-sensY').innerText = SENSITIVITY_Y.toFixed(1);
+                document.getElementById('val-dwell').innerText = (DWEL_TIME / 1000).toFixed(1) + ' 秒';
+
+                sidebar.classList.replace('-translate-x-full', 'translate-x-0');
+                overlay.classList.replace('opacity-0', 'opacity-100');
+                overlay.classList.remove('pointer-events-none');
+            }
+        }
+
+        // 新增：當滑桿更動時同步更新系統核心變數
+        function updateSettingsFromUI() {
+            const sx = parseFloat(document.getElementById('input-sensX').value);
+            const sy = parseFloat(document.getElementById('input-sensY').value);
+            const dw = parseFloat(document.getElementById('input-dwell').value);
+
+            SENSITIVITY_X = sx;
+            SENSITIVITY_Y = sy;
+            DWEL_TIME = dw * 1000; // 秒轉成毫秒
+
+            document.getElementById('val-sensX').innerText = sx.toFixed(1);
+            document.getElementById('val-sensY').innerText = sy.toFixed(1);
+            document.getElementById('val-dwell').innerText = dw.toFixed(1) + ' 秒';
+        }
+
+        // 新增需求相關功能：開啟詞彙庫彈窗
+        function openVocabularyModal() {
+            // 深拷貝當前已選的資料到暫存區
+            for (let cat in menuData) {
+                tempSelectedVocab[cat] = menuData[cat].map(item => item[0]); // 僅記錄文字作識別
+            }
+            document.getElementById('vocab-modal').classList.remove('hidden');
+            switchVocabTab('common');
+        }
+
+        // 新增需求相關功能：關閉詞彙庫彈窗
+        function closeVocabularyModal() {
+            document.getElementById('vocab-modal').classList.add('hidden');
+        }
+
+        // 新增需求相關功能：切換詞彙庫分類分頁
+        function switchVocabTab(category) {
+            currentVocabTab = category;
+            const tabs = ['common', 'eat', 'cloth', 'live', 'move'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`tab-v-${t}`);
+                if (t === category) {
+                    btn.className = "px-6 py-2.5 font-black text-lg rounded-xl transition-all bg-indigo-600 text-white shadow-md";
+                } else {
+                    btn.className = "px-6 py-2.5 font-black text-lg rounded-xl transition-all bg-white text-slate-700 hover:bg-slate-200";
+                }
+            });
+
+            vocabSearchKeyword = '';
+            const searchInput = document.getElementById('vocab-search-input');
+            if (searchInput) searchInput.value = '';
+
+            renderVocabSelectionGrid();
+        }
+
+        function searchVocabulary(value) {
+            vocabSearchKeyword = String(value || '').trim().toLowerCase();
+            renderVocabSelectionGrid();
+        }
+        // 新增需求相關功能：渲染龐大庫存詞彙以供挑選
+        function renderVocabSelectionGrid() {
+            const grid = document.getElementById('vocab-selection-grid');
+            grid.innerHTML = '';
+            
+            const keyword = vocabSearchKeyword;
+            const totalAvailable = FULL_VOCABULARY_DATABASE[currentVocabTab].filter(item => {
+                if (!keyword) return true;
+
+                const text = String(item[0] || '').toLowerCase();
+                const iconName = String(item[1] || '').toLowerCase();
+                const englishKeyword = String(item[2] || '').toLowerCase();
+
+                return text.includes(keyword) || iconName.includes(keyword) || englishKeyword.includes(keyword);
+            });
+            const selectedList = tempSelectedVocab[currentVocabTab];
+            
+            // 更新上方計數器
+            document.getElementById('vocab-counter').innerText = `當前類別已選：${selectedList.length} / 9`;
+
+            totalAvailable.forEach((item) => {
+                const [text, iconName] = item;
+                const isSelected = selectedList.includes(text);
+                const card = document.createElement('div');
+                
+                // 根據是否點選給予不同樣式
+                card.className = `p-4 rounded-2xl border-3 flex flex-col items-center justify-center gap-3 cursor-pointer select-none transition-all ${
+                    isSelected 
+                    ? 'bg-indigo-50 border-indigo-600 text-indigo-900 ring-2 ring-indigo-600/20 shadow-md' 
+                    : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700 shadow-sm'
+                }`;
+
+                card.innerHTML = `
+                    <div class="flex justify-between w-full items-center shrink-0">
+                        <span class="material-symbols-outlined text-sm ${isSelected ? 'text-indigo-600 font-bold' : 'text-slate-300'}">
+                            ${isSelected ? 'check_circle' : 'radio_button_unchecked'}
+                        </span>
+                    </div>
+                    <span class="material-symbols-outlined text-4xl ${isSelected ? 'text-indigo-600' : 'text-slate-400'}">${iconName}</span>
+                    <span class="font-black text-xl tracking-wide">${text}</span>
+                `;
+                
+                const iconHolder = card.querySelector('.material-symbols-outlined.text-4xl');
+                replaceWithArasaacIcon(iconHolder, item, 'arasaac-icon-small');
+                // 點擊事件：切換選取狀態，並嚴格限制只能選擇 9 個
+                card.onclick = () => {
+                    const idx = selectedList.indexOf(text);
+                    if (idx > -1) {
+                        // 原本已選取 -> 取消選取
+                        selectedList.splice(idx, 1);
+                    } else {
+                        // 原本未選取 -> 檢查是否超過 9 個
+                        if (selectedList.length >= 9) {
+                            alert('每個介面類別限制「只能選擇九個」放置於畫面中！請先取消勾選不需要的詞彙。');
+                            return;
+                        }
+                        selectedList.push(text);
+                    }
+                    renderVocabSelectionGrid();
+                };
+
+                grid.appendChild(card);
+            });
+        }
+
+        // 新增需求相關功能：儲存並套用選取結果
+        function saveVocabularySelection() {
+            // 檢查是否每個分類都完整選滿 9 個
+            for (let cat in tempSelectedVocab) {
+                if (tempSelectedVocab[cat].length !== 9) {
+                    const catNameMap = { 'common': '常用', 'eat': '食', 'cloth': '衣', 'live': '住', 'move': '行' };
+                    alert(`【${catNameMap[cat]}】分類目前選了 ${tempSelectedVocab[cat].length} 個。請確認每個類別都恰好選滿 9 個詞彙才能存檔套用！`);
+                    switchVocabTab(cat);
+                    return;
+                }
+            }
+
+            // 將暫存寫回核心配置中
+            for (let cat in tempSelectedVocab) {
+                menuData[cat] = tempSelectedVocab[cat].map(text => {
+                    // 從完整資料庫撈取原有的 icon 結構
+                    return FULL_VOCABULARY_DATABASE[cat].find(item => item[0] === text);
+                });
+            }
+
+            // 即時重繪主網格介面
+            const activeNav = document.querySelector('.nav-btn.bg-gray-500, .nav-btn.bg-orange-500, .nav-btn.bg-blue-500, .nav-btn.bg-green-500, .nav-btn.bg-purple-500');
+            let currentActiveCat = 'common';
+            if (activeNav) {
+                if (activeNav.id === 'nav-eat') currentActiveCat = 'eat';
+                if (activeNav.id === 'nav-cloth') currentActiveCat = 'cloth';
+                if (activeNav.id === 'nav-live') currentActiveCat = 'live';
+                if (activeNav.id === 'nav-move') currentActiveCat = 'move';
+            }
+            updateGrid(currentActiveCat);
+            
+            closeVocabularyModal();
+            toggleSettingsMenu(); // 順便收合右拉選單
+        }
+
+        function toggleLanguage() {
+            if (currentLanguage === 'zh-TW') {
+                currentLanguage = 'nan-TW';
+                document.getElementById('current-lang-text').innerText = '台語(閩南語)';
+                document.getElementById('btn-lang-toggle').classList.replace('bg-slate-700', 'bg-orange-600');
+            } else {
+                currentLanguage = 'zh-TW';
+                document.getElementById('current-lang-text').innerText = '中文(國語)';
+                document.getElementById('btn-lang-toggle').classList.replace('bg-orange-600', 'bg-slate-700');
+            }
+        }
+
+        // 切換控制模式
+        function switchControlMode(selectedMode) {
+            resetGaze();
+            if (selectedMode) {
+                currentMode = selectedMode;
+            }
+            
+            if (currentMode === 'head') {
+                SENSITIVITY_X = 6.0;
+                SENSITIVITY_Y = 6.0;
+                startCameraAndAI();
+            } else if (currentMode === 'eye') {
+                // WebGazer 內部自帶校準映射，初始建議標準值即可
+                SENSITIVITY_X = 1.0;
+                SENSITIVITY_Y = 1.0;
+                startCameraAndAI();
+            } else {
+                currentMode = 'touch';
+                stopCameraAndAI();
+            }
+        }
+
+        function updateGrid(category) {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('active-nav');
+            });
+
+            const activeNavBtn = document.getElementById(`nav-${category}`);
+            if (activeNavBtn) {
+                activeNavBtn.classList.add('active-nav');
+            }
+            const container = document.getElementById('grid-container');
+            container.innerHTML = '';
+            menuData[category].forEach((item, index) => {
+                const [text, iconName] = item;
+                const btn = document.createElement('div');
+                btn.className = 'phrase-btn';
+                btn.id = `phrase-btn-${index}`;
+                btn.innerHTML = `
+                    <div class="gaze-progress"></div>
+                    <div class="btn-content">
+                        <span class="material-symbols-outlined icon-main">${iconName}</span>
+                        <span class="text-main">${text}</span>
+                    </div>
+                `;
+                btn.onclick = () => triggerButtonAction(btn, text);
+                container.appendChild(btn);
+
+                const iconHolder = btn.querySelector('.icon-main');
+                replaceWithArasaacIcon(iconHolder, item, 'arasaac-icon');
+            });
+            container.scrollLeft = 0;
+        }
+
+        function triggerButtonAction(element, text) {
+            const now = Date.now();
+            if (now - lastClick < 700) return;
+            lastClick = now;
+            document.getElementById('output').innerText += text + ' ';
+            speakText(text);
+            resetGaze();
+        }
+
+        "use strict";
+        function getTaigiText(text) {
+            return taigiTextMap[text] || text;
+        }
+
+        async function speakTaigiOnline(text) {
+            if (!TAIGI_TTS_ENDPOINT) {
+                return false;
+            }
+
+            const taigiText = getTaigiText(text);
+
+            try {
+                window.speechSynthesis.cancel();
+
+                let audioUrl = taigiAudioCache.get(taigiText);
+
+                if (!audioUrl) {
+                    const response = await fetch(`${TAIGI_TTS_ENDPOINT}${encodeURIComponent(taigiText)}`);
+                    if (!response.ok) throw new Error('台語 TTS 服務無法使用');
+
+                    const audioBlob = await response.blob();
+                    audioUrl = URL.createObjectURL(audioBlob);
+                    taigiAudioCache.set(taigiText, audioUrl);
+                }
+
+                const audio = new Audio(audioUrl);
+                await audio.play();
+                return true;
+            } catch (error) {
+                console.warn('台語線上語音播放失敗，改用瀏覽器語音：', error);
+                return false;
+            }
+        }
+
+        async function speakText(text) {
+            window.speechSynthesis.cancel();
+
+            if (currentLanguage === 'nan-TW') {
+                const played = await speakTaigiOnline(text);
+                if (played) return;
+            }
+
+            const msg = new SpeechSynthesisUtterance(
+                currentLanguage === 'nan-TW' ? getTaigiText(text) : text
+            );
+
+            if (currentLanguage === 'nan-TW') {
+                const voices = window.speechSynthesis.getVoices();
+                const taiwaneseVoice = voices.find(v =>
+                    v.lang.includes('nan') ||
+                    v.lang.includes('hak') ||
+                    v.name.includes('Taiwanese') ||
+                    v.name.includes('台語') ||
+                    v.name.includes('閩南')
+                );
+
+                if (taiwaneseVoice) {
+                    msg.voice = taiwaneseVoice;
+                    msg.lang = taiwaneseVoice.lang;
+                } else {
+                    msg.lang = 'zh-TW';
+                }
+            } else {
+                msg.lang = 'zh-TW';
+            }
+
+            msg.rate = 0.8;
+            window.speechSynthesis.speak(msg);
+        }
+
+        async function playAll() {
+            await speakText(document.getElementById('output').innerText || "請先點選按鈕");
+            resetGaze();
+        }
+
+        /* 修正與瀏覽器原生的名詞衝突 */
+        function clearDisplay() {
+            document.getElementById('output').innerText = '';
+            window.speechSynthesis.cancel();
+            resetGaze();
+        }
+        
+        function clearAll() {
+            clearDisplay();
+        }
+
+        function resetGaze() {
+            if (currentHoveredElement) {
+                const progressEl = currentHoveredElement.querySelector('.gaze-progress');
+                if (progressEl) progressEl.style.width = '0%';
+
+                currentHoveredElement.classList.remove('gaze-hover');
+            }
+
+            currentHoveredElement = null;
+            gazeStartTime = 0;
+        }
+
+        // 初始化 MediaPipe Face Mesh（僅保留頭控所需的鼻尖處理）
+        function initAIModel() {
+            faceMesh = new FaceMesh({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+            });
+
+            faceMesh.setOptions({
+                maxNumFaces: 1,
+                refineLandmarks: false, // 只有頭控不用開瞳孔特徵，提高運行流暢度
+                minDetectionConfidence: 0.6,
+                minTrackingConfidence: 0.6
+            });
+
+            const cursorElement = document.getElementById('head-cursor');
+            const loadingElement = document.getElementById('loading-status');
+
+            faceMesh.onResults((results) => {
+                if (currentMode !== 'head') return; // 如果不是頭控，不執行此處代碼
+
+                if (loadingElement.style.display !== 'none') {
+                    loadingElement.style.display = 'none';
+                    cursorElement.style.display = 'block';
+                }
+
+                if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                    const landmarks = results.multiFaceLandmarks[0];
+                    const nose = landmarks[4];
+                    
+                    const targetX = window.innerWidth / 2 + ((1 - nose.x) - 0.5) * window.innerWidth * SENSITIVITY_X;
+                    const targetY = window.innerHeight / 2 + (nose.y - 0.5) * window.innerHeight * SENSITIVITY_Y;
+                    
+                    const finalX = Math.max(0, Math.min(window.innerWidth, targetX));
+                    const finalY = Math.max(0, Math.min(window.innerHeight, targetY));
+
+                    cursorElement.style.left = `${finalX}px`;
+                    cursorElement.style.top = `${finalY}px`;
+
+                    checkHover(finalX, finalY);
+                } else {
+                    resetGaze();
+                }
+            });
+        }
+
+        // 新增：WebGazer 眼控專用初始化與監聽回呼
+        // 升級版：WebGazer 眼控專用初始化與監聽回呼
+        function initWebGazer() {
+            // 防呆：確保 WebGazer 腳本已成功載入到全域中
+            if (typeof window.webgazer === 'undefined') {
+                console.error("WebGazer 腳本尚未載入完成，請檢查網路或 CDN 連結是否正確。");
+                alert("眼控模組載入失敗，請重新整理網頁再試一次。");
+                return false;
+            }
+
+            if (isWebGazerInitialized) return true;
+
+            try {
+                const cursorElement = document.getElementById('head-cursor');
+                const loadingElement = document.getElementById('loading-status');
+
+                webgazer.setGazeListener((data, clock) => {
+                    if (currentMode !== 'eye' || data == null) return;
+
+                    if (loadingElement.style.display !== 'none') {
+                        loadingElement.style.display = 'none';
+                        cursorElement.style.display = 'block';
+                    }
+
+                    // 直接獲取 WebGazer 的迴歸預測螢幕座標
+                    const finalX = Math.max(0, Math.min(window.innerWidth, data.x));
+                    const finalY = Math.max(0, Math.min(window.innerHeight, data.y));
+
+                    cursorElement.style.left = `${finalX}px`;
+                    cursorElement.style.top = `${finalY}px`;
+
+                    checkHover(finalX, finalY);
+                });
+
+                // 關閉 WebGazer 預設內建的紅點游標，使用我們自己的專屬圓圈游標
+                webgazer.showVideoPreview(true)
+                         .showPredictionPoints(false);
+
+                isWebGazerInitialized = true;
+                return true;
+            } catch (err) {
+                console.error("WebGazer 初始化發生錯誤:", err);
+                return false;
+            }
+        }
+
+        // 升級版：啟動鏡頭與偵測（兼容 MediaPipe 與 WebGazer）
+        function startCameraAndAI() {
+            const videoElement = document.getElementById('webcam-preview');
+            const loadingElement = document.getElementById('loading-status');
+            const cursorElement = document.getElementById('head-cursor');
+
+            loadingElement.style.display = 'block';
+            loadingElement.innerText = `AI ${currentMode === 'head' ? '頭控' : '眼控'}模式載入中...`;
+
+            if (currentMode === 'head') {
+                // 如果先前有開啟 WebGazer，先將其暫停
+                if (isWebGazerInitialized && typeof webgazer !== 'undefined') {
+                    webgazer.pause();
+                    const wgVideo = document.getElementById('webgazerVideoFeed');
+                    if (wgVideo) wgVideo.style.display = 'none';
+                    const wgCanvas = document.getElementById('webgazerFaceOverlay');
+                    if (wgCanvas) wgCanvas.style.display = 'none';
+                    const wgFeedback = document.getElementById('webgazerFaceFeedbackBox');
+                    if (wgFeedback) wgFeedback.style.display = 'none';
+                }
+
+                videoElement.style.display = 'block'; 
+                if (!faceMesh) initAIModel();
+
+                if (!camera) {
+                    camera = new Camera(videoElement, {
+                        onFrame: async () => {
+                            if (currentMode === 'head') {
+                                await faceMesh.send({ image: videoElement });
+                            }
+                        },
+                        width: 640,
+                        height: 480
+                    });
+                }
+                camera.start()
+                    .then(() => { isCameraRunning = true; })
+                    .catch(err => { showError(); });
+
+            } else if (currentMode === 'eye') {
+                // 關閉 MediaPipe 鏡頭，交由 WebGazer 接管
+                if (isCameraRunning && camera) {
+                    camera.stop();
+                    isCameraRunning = false;
+                    videoElement.style.display = 'none';
+                }
+
+                // 執行初始化，若失敗則中斷
+                if (!initWebGazer()) {
+                    loadingElement.style.display = 'none';
+                    return;
+                }
+
+                // 啟動 WebGazer 偵測
+                try {
+                    webgazer.resume();
+                    
+                    // 將 WebGazer 自帶的預覽小視窗移至合適位置
+                    setTimeout(() => {
+                        const wgVideo = document.getElementById('webgazerVideoFeed');
+                        if (wgVideo) {
+                            wgVideo.style.display = 'block';
+                            wgVideo.style.position = 'fixed';
+                            wgVideo.style.bottom = '10px';
+                            wgVideo.style.right = '10px';
+                            wgVideo.style.width = '160px';
+                            wgVideo.style.height = '120px';
+                            wgVideo.style.zIndex = '999';
+                            wgVideo.style.transform = 'scaleX(-1)'; // 鏡像翻轉
+                        }
+                    }, 1000);
+                } catch (e) {
+                    console.error("WebGazer 啟動失敗:", e);
+                    showError();
+                }
+            }
+        }
+        // 停止鏡頭與偵測（回到觸控模式）
+        function stopCameraAndAI() {
+            const videoElement = document.getElementById('webcam-preview');
+            const cursorElement = document.getElementById('head-cursor');
+            const loadingElement = document.getElementById('loading-status');
+            
+            videoElement.style.display = 'none';
+            cursorElement.style.display = 'none';
+            loadingElement.style.display = 'none';
+
+            // 關閉 MediaPipe
+            if (videoElement.srcObject) {
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null;
+            }
+            if (camera) {
+                camera.stop();
+            }
+            isCameraRunning = false;
+
+            // 關閉並隱藏 WebGazer
+            if (isWebGazerInitialized) {
+                webgazer.pause();
+                const wgVideo = document.getElementById('webgazerVideoFeed');
+                if (wgVideo) wgVideo.style.display = 'none';
+                const wgCanvas = document.getElementById('webgazerFaceOverlay');
+                if (wgCanvas) wgCanvas.style.display = 'none';
+                const wgFeedback = document.getElementById('webgazerFaceFeedbackBox');
+                if (wgFeedback) wgFeedback.style.display = 'none';
+            }
+        }
+
+        function checkHover(x, y) {
+            const gridContainer = document.getElementById('grid-container');
+            const leftBoundary = window.innerWidth * 0.10;
+            const rightBoundary = window.innerWidth * 0.90;
+
+            if (y > 75 && y < (window.innerHeight - 145)) {
+                if (x < leftBoundary) {
+                    gridContainer.scrollLeft -= 12;
+                } else if (x > rightBoundary) {
+                    gridContainer.scrollLeft += 12;
+                }
+            }
+
+            const targetEl = document.elementFromPoint(x, y);
+            const clickableBtn = targetEl?.closest('.phrase-btn, .nav-btn, .ctrl-btn');
+
+            if (clickableBtn) {
+                if (currentHoveredElement === clickableBtn) {
+                    const duration = Date.now() - gazeStartTime;
+                    const progress = Math.min((duration / DWEL_TIME) * 100, 100);
+
+                    const progressEl = clickableBtn.querySelector('.gaze-progress');
+                    if (progressEl) progressEl.style.width = `${progress}%`;
+
+                    if (duration >= DWEL_TIME) {
+                        clickableBtn.click();
+                    }
+                } else {
+                    resetGaze();
+                    currentHoveredElement = clickableBtn;
+                    currentHoveredElement.classList.add('gaze-hover');
+                    gazeStartTime = Date.now();
+                }
+            } else {
+                resetGaze();
+            }
+        }
+
+        function showError() {
+            document.getElementById('loading-status').innerHTML = `
+                <div class="text-red-400 font-bold mb-2">鏡頭啟動失敗</div>
+                <div class="text-sm text-gray-300 text-left">
+                    1. 由於安全性限制，本地檔案 (file://) 無法開啟鏡頭。<br>
+                    2. 請先將檔案部署到 <span class="text-yellow-300">GitHub Pages</span>（HTTPS環境）再開啟。<br>
+                    3. 開啟網頁後，請務必點擊瀏覽器的「允許」鏡頭權限。
+                </div>
+            `;
+            document.getElementById('loading-status').style.display = 'block';
+        }
+
+        window.onload = () => {
+            updateGrid('common');
+            if (window.speechSynthesis.onvoiceschanged !== undefined) {
+                window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+            }
+        };
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(() => console.log('Service Worker 已註冊'))
+                    .catch(error => console.warn('Service Worker 註冊失敗：', error));
+            });
+        }
+    </script>
+</body>
+
+</html>
