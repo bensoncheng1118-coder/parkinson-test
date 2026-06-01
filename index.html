@@ -1800,43 +1800,46 @@ const taigiTextMap = Object.fromEntries(
         }
 
         // 🛠️ 終極強化版：啟動鏡頭與偵測
-        function startCameraAndAI() {
-// 在 currentMode === 'eye' 的區塊內最上方加上這段：
-if (currentMode === 'eye') {
-    // 【新增這段】強制清除上一次可能卡殘留的 WebGazer 元素，避免死鎖
-    const oldVideo = document.getElementById('webgazerVideoFeed');
-    if (oldVideo) oldVideo.remove();
-    const oldCanvas = document.getElementById('webgazerFaceOverlay');
-    if (oldCanvas) oldCanvas.remove();
-    
-    // 底下接原本的邏輯...
-    if (!initWebGazer()) return;
-    // ...
-}
+        // 🚀 修正版：啟動鏡頭與偵測（徹底隔離 MediaPipe 與 WebGazer）
+        async function startCameraAndAI() {
             const videoElement = document.getElementById('webcam-preview');
             const loadingElement = document.getElementById('loading-status');
             const cursorElement = document.getElementById('head-cursor');
 
             loadingElement.style.display = 'block';
-            loadingElement.innerText = `AI ${currentMode === 'head' ? '頭控' : '眼控'}模式載入中，請允許鏡頭權限...`;
+            loadingElement.innerText = `AI ${currentMode === 'head' ? '頭控' : '眼控'}模式載入中，請保持面朝鏡頭...`;
             cursorElement.style.display = 'none';
 
-            // 1. 如果是頭控模式 (MediaPipe)
+            // ==========================================
+            // 情況 A：切換至「頭控模式」 (MediaPipe)
+            // ==========================================
             if (currentMode === 'head') {
-                // 先完全關閉關閉 WebGazer
-                if (isWebGazerInitialized && typeof webgazer !== 'undefined') {
-                    try { webgazer.pause(); } catch(e){}
-                    hideWebGazerUI();
+                // 1. 徹底關閉並摧毀 WebGazer 殘留物
+                if (typeof webgazer !== 'undefined') {
+                    try {
+                        webgazer.pause();
+                        hideWebGazerUI();
+                    } catch(e) { console.log("暫停 WebGazer 時發生的非預期狀況:", e); }
                 }
 
+                // 2. 顯示並確保鏡頭標籤具備基本尺寸
                 videoElement.style.display = 'block'; 
+                videoElement.width = 640;
+                videoElement.height = 480;
+
                 if (!faceMesh) initAIModel();
 
+                // 3. 啟動 MediaPipe 鏡頭
                 if (!camera) {
                     camera = new Camera(videoElement, {
                         onFrame: async () => {
-                            if (currentMode === 'head') {
-                                await faceMesh.send({ image: videoElement });
+                            // 關鍵防呆：只有在頭控模式下，且鏡頭標籤還在時才丟給 AI 算
+                            if (currentMode === 'head' && videoElement && videoElement.readyState >= 2) {
+                                try {
+                                    await faceMesh.send({ image: videoElement });
+                                } catch(err) {
+                                    console.error("MediaPipe 傳送幀錯誤:", err);
+                                }
                             }
                         },
                         width: 640,
@@ -1851,22 +1854,32 @@ if (currentMode === 'eye') {
                         showError(); 
                     });
 
-            // 2. 如果是眼控模式 (WebGazer)
+            // ==========================================
+            // 情況 B：切換至「眼控模式」 (WebGazer)
+            // ==========================================
             } else if (currentMode === 'eye') {
-                // 先完全釋放 MediaPipe 的鏡頭，避免衝突卡死
+                // 1. 徹底終止 MediaPipe 的鏡頭，並切斷隨後的 Loop 迴圈
                 if (isCameraRunning && camera) {
-                    try { camera.stop(); } catch(e){}
+                    try {
+                        await camera.stop();
+                    } catch(e) { console.log("停止 MediaPipe 鏡頭時發生的非預期狀況:", e); }
                     isCameraRunning = false;
                 }
+                
+                // 2. 隱藏頭控用的 video 標籤，防止它找不到寬度報錯
                 videoElement.style.display = 'none';
+                
+                // 強制清空舊的 WebGazer DOM，防止死鎖
+                const oldVideo = document.getElementById('webgazerVideoFeed');
+                if (oldVideo) oldVideo.remove();
+                const oldCanvas = document.getElementById('webgazerFaceOverlay');
+                if (oldCanvas) oldCanvas.remove();
 
-                // 初始化 WebGazer
+                // 3. 初始化並啟動 WebGazer
                 if (!initWebGazer()) return;
 
-                // 啟動 WebGazer
                 webgazer.resume()
                     .then(() => {
-                        // 成功啟動後，調整 WebGazer 預設小視窗的位置與大小
                         setTimeout(() => {
                             const wgVideo = document.getElementById('webgazerVideoFeed');
                             if (wgVideo) {
@@ -1877,45 +1890,55 @@ if (currentMode === 'eye') {
                                 wgVideo.style.width = '160px';
                                 wgVideo.style.height = '120px';
                                 wgVideo.style.zIndex = '9999';
-                                wgVideo.style.transform = 'scaleX(-1)'; // 鏡像
+                                wgVideo.style.transform = 'scaleX(-1)';
                             }
-                            // 隱藏不必要的 canvas 疊加層
-                            const wgCanvas = document.getElementById('webgazerFaceOverlay');
-                            if (wgCanvas) wgCanvas.style.display = 'none';
-                            const wgFeedback = document.getElementById('webgazerFaceFeedbackBox');
-                            if (wgFeedback) wgFeedback.style.display = 'none';
+                            hideWebGazerUnusedUI();
                         }, 1200);
                     })
                     .catch(err => {
                         console.error("WebGazer 核心啟動失敗:", err);
-                        loadingElement.innerText = `眼控鏡頭啟動失敗，請確認是否有其他應用程式佔用了鏡頭。錯誤: ${err.message}`;
+                        loadingElement.innerText = `眼控鏡頭啟動失敗: ${err.message}`;
                     });
             }
         }
 
-        // 🛠️ 終極強化版：停止鏡頭與偵測
+        // 🚀 修正版：停止鏡頭與偵測
         function stopCameraAndAI() {
             const videoElement = document.getElementById('webcam-preview');
             const cursorElement = document.getElementById('head-cursor');
             const loadingElement = document.getElementById('loading-status');
             
-            videoElement.style.display = 'none';
-            cursorElement.style.display = 'none';
-            loadingElement.style.display = 'none';
+            if (videoElement) videoElement.style.display = 'none';
+            if (cursorElement) cursorElement.style.display = 'none';
+            if (loadingElement) loadingElement.style.display = 'none';
 
-            // 關閉 MediaPipe
             if (isCameraRunning && camera) {
                 try { camera.stop(); } catch(e){}
                 isCameraRunning = false;
             }
 
-            // 關閉並隱藏 WebGazer
-            if (isWebGazerInitialized && typeof webgazer !== 'undefined') {
+            if (typeof webgazer !== 'undefined') {
                 try { webgazer.pause(); } catch(e){}
                 hideWebGazerUI();
             }
         }
 
+        // 輔助函式：隱藏不需要的疊加層
+        function hideWebGazerUnusedUI() {
+            const wgCanvas = document.getElementById('webgazerFaceOverlay');
+            if (wgCanvas) wgCanvas.style.display = 'none';
+            const wgFeedback = document.getElementById('webgazerFaceFeedbackBox');
+            if (wgFeedback) wgFeedback.style.display = 'none';
+        }
+
+        // 輔助函式：隱藏全部 WebGazer UI
+        function hideWebGazerUI() {
+            const ids = ['webgazerVideoFeed', 'webgazerFaceOverlay', 'webgazerFaceFeedbackBox'];
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+        }
         // 輔助函式：強制隱藏 WebGazer 自動產生的所有 UI 元素
         function hideWebGazerUI() {
             const ids = ['webgazerVideoFeed', 'webgazerFaceOverlay', 'webgazerFaceFeedbackBox'];
